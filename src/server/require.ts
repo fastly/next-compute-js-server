@@ -5,14 +5,13 @@
  * Portions of this file Copyright Vercel, Inc., licensed under the MIT license. See LICENSE file for details.
  */
 
-import { join, relative } from 'path';
+import { join, resolve } from 'path';
 
 import {
   APP_PATHS_MANIFEST,
   FONT_MANIFEST,
   PAGES_MANIFEST,
   SERVER_DIRECTORY,
-  SERVERLESS_DIRECTORY
 } from 'next/constants';
 import { PagesManifest } from 'next/dist/build/webpack/plugins/pages-manifest-plugin';
 import { normalizeLocalePath } from 'next/dist/shared/lib/i18n/normalize-locale-path';
@@ -20,7 +19,7 @@ import { denormalizePagePath } from 'next/dist/shared/lib/page-path/denormalize-
 import { normalizePagePath } from 'next/dist/shared/lib/page-path/normalize-page-path';
 import { MissingStaticPage, PageNotFoundError } from 'next/dist/shared/lib/utils';
 
-import { Assets } from './common';
+import { getFsSettings } from './fs';
 
 /**
  * Finds the path that corresponds to a page, based on the pages manifest and localizations.
@@ -28,33 +27,30 @@ import { Assets } from './common';
  * found at next/server/require.ts)
  */
 export function getPagePath(
-  assets: Assets,
   page: string,
-  dir: string,
   distDir: string,
   serverless: boolean,
   dev?: boolean,
   locales?: string[],
   appDirEnabled?: boolean
 ): string {
+  if (serverless) {
+    throw new Error("serverless not supported for this platform!");
+  }
+
   const serverBuildPath = join(
     distDir,
-    serverless && !dev ? SERVERLESS_DIRECTORY : SERVER_DIRECTORY
+    SERVER_DIRECTORY
   );
   let rootPathsManifest: undefined | PagesManifest;
 
   if (appDirEnabled) {
-    rootPathsManifest = readAssetManifest(
-      assets,
-      join(serverBuildPath, APP_PATHS_MANIFEST),
-      dir
-    );
+    rootPathsManifest = requireManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
   }
-  const pagesManifest = readAssetManifest(
-    assets,
-    join(serverBuildPath, PAGES_MANIFEST),
-    dir
-  ) as PagesManifest;
+  const pagesManifest = requireManifest(join(
+    serverBuildPath,
+    PAGES_MANIFEST
+  )) as PagesManifest;
 
   try {
     page = denormalizePagePath(normalizePagePath(page));
@@ -99,17 +95,13 @@ export function getPagePath(
  * found at next/server/require.ts)
  */
 export async function requirePage(
-  assets: Assets,
   page: string,
-  dir: string,
   distDir: string,
   serverless: boolean,
   appDirEnabled?: boolean
 ): Promise<any> {
   const pagePath = getPagePath(
-    assets,
     page,
-    dir,
     distDir,
     serverless,
     false,
@@ -118,12 +110,12 @@ export async function requirePage(
   );
   if (pagePath.endsWith('.html')) {
     try {
-      return readAssetFileAsString(assets, pagePath, dir);
+      return readAssetFileAsString(pagePath);
     } catch(err: any) {
       throw new MissingStaticPage(page, err.message);
     }
   }
-  return readAssetModule(assets, pagePath, dir);
+  return await requireModule(pagePath);
 }
 
 /**
@@ -131,104 +123,67 @@ export async function requirePage(
  * (An adaptation for Compute@Edge of function in Next.js of the same name,
  * found at next/server/require.ts)
  */
-export function requireFontManifest(
-  assets: Assets,
-  distDir: string,
-  dir: string,
-  serverless: boolean,
-) {
+export function requireFontManifest(distDir: string, serverless: boolean) {
+  if (serverless) {
+    throw new Error("serverless not supported for this platform!");
+  }
   const serverBuildPath = join(
     distDir,
-    serverless ? SERVERLESS_DIRECTORY : SERVER_DIRECTORY
+    SERVER_DIRECTORY
   );
-  return readAssetManifest(
-    assets,
-    join(serverBuildPath, FONT_MANIFEST),
-    dir,
-  );
+  const fontManifest = requireManifest(join(serverBuildPath, FONT_MANIFEST));
+  return fontManifest;
 }
 
 /* ---- */
 
 export function assetDirectoryExists(
-  assets: Assets,
   path: string,
-  dir: string,
 ): boolean {
-  const relativePath = relative(dir, path);
-  return Object.keys(assets).some(key => key.startsWith('/' + relativePath + '/'));
+  const { contentAssets, dir } = getFsSettings();
+  const relativePath = resolve(dir, path);
+  return contentAssets.getAssetKeys()
+    .some(key => key.startsWith(relativePath + '/'));
 }
 
 export function assetDirectory(
-  assets: Assets,
   path: string,
-  dir: string,
 ): string[] {
-  const relativePath = relative(dir, path);
-  return Object.keys(assets)
-    .filter(key => key.startsWith('/' + relativePath + '/'));
+  const { contentAssets, dir } = getFsSettings();
+  const relativePath = resolve(dir, path);
+  return contentAssets.getAssetKeys()
+    .filter(key => key.startsWith(relativePath + '/'));
 }
 
 export function assetFileExists(
-  assets: Assets,
   path: string,
-  dir: string
 ) {
-  const relativePath = relative(dir, path);
-  return '/' + relativePath in assets;
-}
-
-export function readAssetFile(
-  assets: Assets,
-  path: string,
-  dir: string,
-) {
-  const relativePath = relative(dir, path);
-  const file = assets['/' + relativePath];
-  return file.content;
+  const { contentAssets, dir } = getFsSettings();
+  const relativePath = resolve(dir, path);
+  return contentAssets.getAsset(relativePath) != null;
 }
 
 export function readAssetFileAsString(
-  assets: Assets,
   path: string,
-  dir: string,
 ) {
-  let content = readAssetFile(
-    assets,
-    path,
-    dir
-  );
-  if(typeof content !== 'string') {
-    content = content.toString('utf8');
-  }
-  return content;
+  const { contentAssets, dir } = getFsSettings();
+  const relativePath = resolve(dir, path);
+  const file = contentAssets.getAsset(relativePath);
+  return file?.getText() ?? '';
 }
 
-export function getAssetContentType(
-  assets: Assets,
+export function requireManifest(
   path: string,
-  dir: string,
 ) {
-  const relativePath = relative(dir, path);
-  const file = assets['/' + relativePath];
-  return file.contentType;
-}
-
-export function readAssetManifest(
-  assets: Assets,
-  path: string,
-  dir: string,
-) {
-  let content = readAssetFileAsString(assets, path, dir);
+  let content = readAssetFileAsString(path) ?? '';
   return JSON.parse(content);
 }
 
-export function readAssetModule(
-  assets: Assets,
+export async function requireModule(
   path: string,
-  dir: string,
 ) {
-  const relativePath = relative(dir, path);
-  const file = assets['/' + relativePath];
-  return file.module;
+  const { moduleAssets, dir } = getFsSettings();
+  const relativePath = resolve(dir, path);
+  const file = moduleAssets.getAsset(relativePath);
+  return file?.getModule();
 }

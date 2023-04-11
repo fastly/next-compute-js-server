@@ -8,7 +8,7 @@
     "strict": true,
     "allowJs": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "build/test"
+    "outDir": "dist/test"
   },
   "include": [
     "./src/**/*.ts",
