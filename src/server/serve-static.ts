@@ -3,11 +3,11 @@
  * Licensed under the MIT license. See LICENSE file for details.
  */
 
-import type { ServerResponse } from 'http';
+import { makeStreamIterator } from './require';
+import { relative } from "path";
 
-import { Assets } from './common';
-import { getAssetContentType, readAssetFile } from './require';
-import { ComputeJsNextRequest, ComputeJsNextResponse } from "./base-http/compute-js";
+import type { IncomingMessage, ServerResponse } from 'http';
+import type { ContentAssets } from "@fastly/compute-js-static-publish";
 
 /**
  * Serves the contents of a file at a path.
@@ -15,43 +15,30 @@ import { ComputeJsNextRequest, ComputeJsNextResponse } from "./base-http/compute
  * found at next/server/serve-static.ts)
  */
 export async function serveStatic(
-  assets: Assets,
-  req: ComputeJsNextRequest,
-  res: ComputeJsNextResponse,
+  contentAssets: ContentAssets,
+  req: IncomingMessage,
+  res: ServerResponse,
   path: string,
   dir: string,
 ): Promise<void> {
 
   const decodedPath = decodeURIComponent(path);
-  const asset = readAssetFile(assets, decodedPath, dir);
 
-  const outgoingHeaders = new Headers();
-
-  // Copy all the headers that have already been set on this response
-  // for example those set by setImmutableAssetCacheControl()
-  const nodeRes = res.originalResponse as ServerResponse;
-  for (const [key, value] of Object.entries(nodeRes.getHeaders())) {
-    if(value == null) {
-      continue;
-    }
-    if(Array.isArray(value)) {
-      for (const entry of value) {
-        outgoingHeaders.append(key, entry);
-      }
-    } else {
-      outgoingHeaders.append(key, String(value));
-    }
+  const relativePath = relative(dir, decodedPath);
+  const file = contentAssets.getAsset('/' + relativePath);
+  if (file == null) {
+    throw new Error('File not found');
+  }
+  const storeEntryBody = (await file?.getStoreEntry())?.body;
+  if (storeEntryBody == null) {
+    throw new Error('Could not obtain file stream');
   }
 
-  if(!outgoingHeaders.has('Content-Type')) {
-    outgoingHeaders.append('Content-Type',
-      getAssetContentType(assets, decodedPath, dir)
-    );
-  }
+  res.statusCode = 200;
+  res.statusMessage = 'OK';
+  res.setHeader('Content-Type', file?.getMetadata().contentType);
 
-  res.overrideResponse = new Response(asset, {
-    status: 200,
-    statusText: 'OK',
-    headers: outgoingHeaders,
-  });
+  for await (const chunk of makeStreamIterator(storeEntryBody)) {
+    res.write(chunk)
+  }
 }

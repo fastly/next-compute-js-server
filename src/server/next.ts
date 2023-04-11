@@ -29,7 +29,7 @@ export class NextServer {
     }
     const conf = await loadConfig(
       PHASE_PRODUCTION_SERVER,
-      this.options.computeJs.assets,
+      this.options.computeJs.moduleAssets,
       this.options.dir ?? '.',
       this.options.conf,
     );
@@ -62,29 +62,10 @@ export class NextServer {
     const requestHandler = await this.getRequestHandler();
     await requestHandler(nextRequest, nextResponse);
 
-    let computeResponse: Response;
-
-    // If the handler has set a response directly, then use it
-    if(nextResponse.overrideResponse != null) {
-      computeResponse = nextResponse.overrideResponse;
-    } else {
-      computeResponse = await toComputeResponse(res);
-    }
+    const computeResponse = await toComputeResponse(res);
 
     if (nextResponse.compress && computeResponse.body != null) {
-      const accept = accepts(req);
-      const encoding = accept.encodings(['gzip', 'deflate']) as 'gzip' | 'deflate' | false;
-      if (encoding) {
-        computeResponse.headers.append('Content-Encoding', encoding);
-        computeResponse = new Response(
-          computeResponse.body.pipeThrough(new CompressionStream(encoding)),
-          {
-            status: computeResponse.status,
-            statusText: computeResponse.statusText,
-            headers: computeResponse.headers,
-          }
-        );
-      }
+      computeResponse.headers.append('x-compress-hint', 'on');
     }
 
     return computeResponse;

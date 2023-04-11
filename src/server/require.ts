@@ -20,7 +20,7 @@ import { denormalizePagePath } from 'next/dist/shared/lib/page-path/denormalize-
 import { normalizePagePath } from 'next/dist/shared/lib/page-path/normalize-page-path';
 import { MissingStaticPage, PageNotFoundError } from 'next/dist/shared/lib/utils';
 
-import { Assets } from './common';
+import type { ContentAssets, ModuleAssets } from "@fastly/compute-js-static-publish";
 
 /**
  * Finds the path that corresponds to a page, based on the pages manifest and localizations.
@@ -28,7 +28,7 @@ import { Assets } from './common';
  * found at next/server/require.ts)
  */
 export function getPagePath(
-  assets: Assets,
+  contentAssets: ContentAssets,
   page: string,
   dir: string,
   distDir: string,
@@ -45,13 +45,13 @@ export function getPagePath(
 
   if (appDirEnabled) {
     rootPathsManifest = readAssetManifest(
-      assets,
+      contentAssets,
       join(serverBuildPath, APP_PATHS_MANIFEST),
       dir
     );
   }
   const pagesManifest = readAssetManifest(
-    assets,
+    contentAssets,
     join(serverBuildPath, PAGES_MANIFEST),
     dir
   ) as PagesManifest;
@@ -99,7 +99,8 @@ export function getPagePath(
  * found at next/server/require.ts)
  */
 export async function requirePage(
-  assets: Assets,
+  contentAssets: ContentAssets,
+  moduleAssets: ModuleAssets,
   page: string,
   dir: string,
   distDir: string,
@@ -107,7 +108,7 @@ export async function requirePage(
   appDirEnabled?: boolean
 ): Promise<any> {
   const pagePath = getPagePath(
-    assets,
+    contentAssets,
     page,
     dir,
     distDir,
@@ -118,12 +119,12 @@ export async function requirePage(
   );
   if (pagePath.endsWith('.html')) {
     try {
-      return readAssetFileAsString(assets, pagePath, dir);
+      return readAssetFileAsString(contentAssets, pagePath, dir);
     } catch(err: any) {
       throw new MissingStaticPage(page, err.message);
     }
   }
-  return readAssetModule(assets, pagePath, dir);
+  return await readAssetModule(moduleAssets, pagePath, dir);
 }
 
 /**
@@ -132,7 +133,7 @@ export async function requirePage(
  * found at next/server/require.ts)
  */
 export function requireFontManifest(
-  assets: Assets,
+  contentAssets: ContentAssets,
   distDir: string,
   dir: string,
   serverless: boolean,
@@ -142,7 +143,7 @@ export function requireFontManifest(
     serverless ? SERVERLESS_DIRECTORY : SERVER_DIRECTORY
   );
   return readAssetManifest(
-    assets,
+    contentAssets,
     join(serverBuildPath, FONT_MANIFEST),
     dir,
   );
@@ -151,84 +152,96 @@ export function requireFontManifest(
 /* ---- */
 
 export function assetDirectoryExists(
-  assets: Assets,
+  contentAssets: ContentAssets,
   path: string,
   dir: string,
 ): boolean {
   const relativePath = relative(dir, path);
-  return Object.keys(assets).some(key => key.startsWith('/' + relativePath + '/'));
+  return Object.keys(contentAssets).some(key => key.startsWith('/' + relativePath + '/'));
 }
 
 export function assetDirectory(
-  assets: Assets,
+  contentAssets: ContentAssets,
   path: string,
   dir: string,
 ): string[] {
   const relativePath = relative(dir, path);
-  return Object.keys(assets)
+  return Object.keys(contentAssets)
     .filter(key => key.startsWith('/' + relativePath + '/'));
 }
 
 export function assetFileExists(
-  assets: Assets,
+  contentAssets: ContentAssets,
   path: string,
   dir: string
 ) {
   const relativePath = relative(dir, path);
-  return '/' + relativePath in assets;
+  return contentAssets.getAsset('/' + relativePath) != null;
 }
 
 export function readAssetFile(
-  assets: Assets,
+  contentAssets: ContentAssets,
   path: string,
   dir: string,
 ) {
   const relativePath = relative(dir, path);
-  const file = assets['/' + relativePath];
-  return file.content;
+  const file = contentAssets.getAsset('/' + relativePath);
+  return file?.getBytes() ?? new Uint8Array(0);
 }
 
 export function readAssetFileAsString(
-  assets: Assets,
+  contentAssets: ContentAssets,
   path: string,
   dir: string,
 ) {
-  let content = readAssetFile(
-    assets,
-    path,
-    dir
-  );
-  if(typeof content !== 'string') {
-    content = content.toString('utf8');
-  }
-  return content;
+  const relativePath = relative(dir, path);
+  const file = contentAssets.getAsset('/' + relativePath);
+  return file?.getText() ?? '';
 }
 
 export function getAssetContentType(
-  assets: Assets,
+  contentAssets: ContentAssets,
   path: string,
   dir: string,
 ) {
   const relativePath = relative(dir, path);
-  const file = assets['/' + relativePath];
-  return file.contentType;
+  const file = contentAssets.getAsset('/' + relativePath);
+  return file?.getMetadata().contentType ?? '';
 }
 
 export function readAssetManifest(
-  assets: Assets,
+  contentAssets: ContentAssets,
   path: string,
   dir: string,
 ) {
-  let content = readAssetFileAsString(assets, path, dir);
+  let content = readAssetFileAsString(contentAssets, path, dir) ?? '';
   return JSON.parse(content);
 }
 
-export function readAssetModule(
-  assets: Assets,
+export async function readAssetModule(
+  moduleAssets: ModuleAssets,
   path: string,
   dir: string,
 ) {
   const relativePath = relative(dir, path);
-  const file = assets['/' + relativePath];
-  return file.module;
+  const file = moduleAssets.getAsset('/' + relativePath);
+  return file?.getModule();
 }
+
+export function makeStreamIterator<T>(stream: ReadableStream<T>) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const reader = stream.getReader()!;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) return;
+          yield value;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    },
+  };
+}
+

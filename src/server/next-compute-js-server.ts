@@ -20,7 +20,6 @@ import {
   PRERENDER_MANIFEST,
   ROUTES_MANIFEST,
   SERVER_DIRECTORY,
-  SERVERLESS_DIRECTORY,
 } from 'next/constants';
 import { PrerenderManifest } from 'next/dist/build';
 import { PagesManifest } from 'next/dist/build/webpack/plugins/pages-manifest-plugin';
@@ -56,7 +55,6 @@ import {
   ComputeJsNextRequest,
   ComputeJsNextResponse,
 } from './base-http/compute-js';
-import { ComputeJsServerOptions } from './common';
 import { getBackendInfo } from './compute-js';
 import {
   assetDirectory,
@@ -71,9 +69,7 @@ import {
 import { loadComponents } from './load-components';
 import { serveStatic } from './serve-static';
 import { getClonableBody } from "next/dist/server/body-streams";
-import { isTargetLikeServerless } from "next/dist/server/utils";
-import ResponseCache from "next/dist/server/response-cache";
-import { IncrementalCache } from "next/dist/server/lib/incremental-cache";
+import WebResponseCache from "next/dist/server/response-cache/web";
 import { normalizeAppPath } from "next/dist/shared/lib/router/utils/app-paths";
 import { NextConfig } from "next";
 import getRouteFromAssetPath from "next/dist/shared/lib/router/utils/get-route-from-asset-path";
@@ -81,6 +77,7 @@ import { normalizeLocalePath } from "next/dist/shared/lib/i18n/normalize-locale-
 import { detectDomainLocale } from "next/dist/shared/lib/i18n/detect-domain-locale";
 import { removeTrailingSlash } from "next/dist/shared/lib/router/utils/remove-trailing-slash";
 import { isDynamicRoute } from "next/dist/shared/lib/router/utils";
+import { ComputeJsServerOptions } from "./common";
 
 /**
  * Hardcoded every possible error status code that could be thrown by "serveStatic" method
@@ -144,11 +141,12 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     // pre-warm _document and _app as these will be
     // needed for most requests
     loadComponents(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
+      this.serverOptions.computeJs.moduleAssets,
       this.distDir,
       '/_document',
       this.dir,
-      this._isLikeServerless,
+      false,
       false,
       false,
     ).catch(
@@ -156,11 +154,12 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     );
 
     loadComponents(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
+      this.serverOptions.computeJs.moduleAssets,
       this.distDir,
       '/_app',
       this.dir,
-      this._isLikeServerless,
+      false,
       false,
       false,
     ).catch(
@@ -174,32 +173,8 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     // NOTE: No ENV in Fastly Compute@Edge, at least for now
   }
 
-  protected getResponseCache({ dev }: { dev: boolean }) {
-    const incrementalCache = new IncrementalCache({
-      fs: this.getCacheFilesystem(),
-      dev,
-      serverDistDir: this.serverDistDir,
-      maxMemoryCacheSize: this.nextConfig.experimental.isrMemoryCacheSize,
-      flushToDisk:
-        !this.minimalMode && this.nextConfig.experimental.isrFlushToDisk,
-      incrementalCacheHandlerPath:
-      this.nextConfig.experimental?.incrementalCacheHandlerPath,
-      getPrerenderManifest: () => {
-        if (dev) {
-          return {
-            version: -1 as any, // letting us know this doesn't conform to spec
-            routes: {},
-            dynamicRoutes: {},
-            notFoundRoutes: [],
-            preview: null as any, // `preview` is special case read in next-dev-server
-          };
-        } else {
-          return this.getPrerenderManifest();
-        }
-      },
-    });
-
-    return new ResponseCache(incrementalCache, this.minimalMode);
+  protected getResponseCache() {
+    return new WebResponseCache(this.minimalMode);
   }
 
   protected getPublicDir(): string {
@@ -208,7 +183,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
   protected getHasStaticDir(): boolean {
     return assetDirectoryExists(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
       join(this.dir, 'static'),
       this.dir,
     );
@@ -217,7 +192,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   protected getPagesManifest(): PagesManifest | undefined {
     const pagesManifestFile = join(this.serverDistDir, PAGES_MANIFEST);
     return readAssetManifest(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
       pagesManifestFile,
       this.dir
     );
@@ -227,7 +202,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     if (this.nextConfig.experimental.appDir) {
       const appPathsManifestPath = join(this.serverDistDir, APP_PATHS_MANIFEST);
       return readAssetManifest(
-        this.serverOptions.computeJs.assets,
+        this.serverOptions.computeJs.contentAssets,
         appPathsManifestPath,
         this.dir
       );
@@ -249,7 +224,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
     try {
       const content = readAssetFileAsString(
-        this.serverOptions.computeJs.assets,
+        this.serverOptions.computeJs.contentAssets,
         buildIdFile,
         this.dir
       );
@@ -257,7 +232,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     } catch (err) {
       if (
         !assetFileExists(
-          this.serverOptions.computeJs.assets,
+          this.serverOptions.computeJs.contentAssets,
           buildIdFile,
           this.dir,
         )
@@ -364,7 +339,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   protected generatePublicRoutes(): Route[] {
     const publicFiles = new Set(
       assetDirectory(
-        this.serverOptions.computeJs.assets,
+        this.serverOptions.computeJs.contentAssets,
         this.publicDir,
         this.dir,
       ).map((p) => {
@@ -440,7 +415,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     let userFilesStatic: string[] = [];
     if (this.hasStaticDir) {
       userFilesStatic = assetDirectory(
-        this.serverOptions.computeJs.assets,
+        this.serverOptions.computeJs.contentAssets,
         join(this.dir, 'static'),
         this.dir,
       );
@@ -449,7 +424,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     let userFilesPublic: string[] = [];
     if (this.publicDir) {
       userFilesPublic = assetDirectory(
-        this.serverOptions.computeJs.assets,
+        this.serverOptions.computeJs.contentAssets,
         join(this.dir, CLIENT_PUBLIC_FILES_PATH),
         this.dir,
       );
@@ -458,7 +433,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     let nextFilesStatic: string[] = [];
     if(!this.minimalMode) {
       userFilesStatic = assetDirectory(
-        this.serverOptions.computeJs.assets,
+        this.serverOptions.computeJs.contentAssets,
         join(this.distDir, 'static'),
         this.dir,
       );
@@ -495,9 +470,9 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     path: string,
   ): Promise<void> {
     return serveStatic(
-      this.serverOptions.computeJs.assets,
-      req,
-      res,
+      this.serverOptions.computeJs.contentAssets,
+      req.originalRequest,
+      res.originalResponse,
       path,
       this.dir,
     );
@@ -601,8 +576,8 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     // node's next-server would try to run this first as an edge function.
     // TODO: do that one day =)
 
-    const pageModule = readAssetModule(
-      this.serverOptions.computeJs.assets,
+    const pageModule = await readAssetModule(
+      this.serverOptions.computeJs.moduleAssets,
       builtPagePath,
       this.dir
     );
@@ -611,17 +586,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
     delete query.__nextLocale
     delete query.__nextDefaultLocale
-
-    // NOTE: NextNodeServer would try to run this as a serverless
-    // it's hard to tell at this moment whether that is the right
-    // thing to do for us
-    // if (!this.renderOpts.dev && this._isLikeServerless) {
-    //   if (typeof pageModule.default === 'function') {
-    //     prepareServerlessUrl(req, query);
-    //     await pageModule.default(req, res);
-    //     return true;
-    //   }
-    // }
 
     await apiResolver(
       (req as ComputeJsNextRequest).originalRequest,
@@ -840,11 +804,11 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     locales?: string[],
   ): string {
     return getPagePath(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
       pathname,
       this.dir,
       this.distDir,
-      this._isLikeServerless,
+      false,
       this.renderOpts.dev,
       locales,
       this.nextConfig.experimental.appDir
@@ -894,11 +858,12 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     for (const pagePath of paths) {
       try {
         const components = await loadComponents(
-          this.serverOptions.computeJs.assets,
+          this.serverOptions.computeJs.contentAssets,
+          this.serverOptions.computeJs.moduleAssets,
           this.distDir,
           pagePath!,
           this.dir,
-          !this.renderOpts.dev && this._isLikeServerless,
+          false,
           !!this.renderOpts.serverComponents,
           isAppPath,
         );
@@ -943,10 +908,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
   protected getFontManifest(): FontManifest | undefined {
     return requireFontManifest(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
       this.distDir,
       this.dir,
-      this._isLikeServerless,
+      false,
     );
   }
 
@@ -964,7 +929,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     const pagePath = normalizePagePath(page);
     const fullPagePath = join(this.serverDistDir, 'pages', `${pagePath}.html`);
     return readAssetFileAsString(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
       fullPagePath,
       this.dir
     );
@@ -1242,7 +1207,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     return {
       readFile: (f) => {
         const content = readAssetFileAsString(
-          this.serverOptions.computeJs.assets,
+          this.serverOptions.computeJs.contentAssets,
           f,
           this.dir
         );
@@ -1250,7 +1215,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       },
       readFileSync: (f) => {
         return readAssetFileAsString(
-          this.serverOptions.computeJs.assets,
+          this.serverOptions.computeJs.contentAssets,
           f,
           this.dir
         );
@@ -1275,7 +1240,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     }
     const manifestFile = join(this.distDir, PRERENDER_MANIFEST);
     const manifest = readAssetManifest(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
       manifestFile,
       this.dir
     );
@@ -1285,7 +1250,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   protected getRoutesManifest(): CustomRoutes {
     const routesManifestFile = join(this.distDir, ROUTES_MANIFEST);
     return readAssetManifest(
-      this.serverOptions.computeJs.assets,
+      this.serverOptions.computeJs.contentAssets,
       routesManifestFile,
       this.dir
     );
@@ -1311,14 +1276,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     addRequestMeta(req, '__NEXT_CLONABLE_BODY', getClonableBody(req.body));
   }
 
-  protected get _isLikeServerless(): boolean {
-    return isTargetLikeServerless(this.nextConfig.target);
-  }
-
   protected get serverDistDir() {
     return join(
       this.distDir,
-      this._isLikeServerless ? SERVERLESS_DIRECTORY : SERVER_DIRECTORY
+      SERVER_DIRECTORY
     );
   }
 }

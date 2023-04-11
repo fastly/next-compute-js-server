@@ -20,9 +20,9 @@ import {
 import { execOnce } from 'next/dist/shared/lib/utils';
 import { ImageConfig, imageConfigDefault, VALID_LOADERS } from 'next/dist/shared/lib/image-config';
 
-import { Assets } from './common';
+import type { ModuleAssets } from "@fastly/compute-js-static-publish";
 
-const targets = [ 'server' /*, 'serverless', 'experimental-serverless-trace'*/];
+const targets = [ 'server' ];
 
 /* ------ */
 /* These functions copied from Next.js: next/server/config.ts, because they are not exported from that file. */
@@ -719,7 +719,7 @@ function assignDefaults(userConfig: { [key: string]: any }) {
  */
 export async function loadConfig(
   phase: string,
-  assets: Assets,
+  moduleAssets: ModuleAssets,
   dir: string,
   customConfig?: object | null,
 ) {
@@ -738,7 +738,7 @@ export async function loadConfig(
 
   let path: string | null = null;
   for(const configFile of CONFIG_FILES) {
-    if ('/' + configFile in assets) {
+    if (moduleAssets.getAsset('/' + configFile) != null) {
       path = configFile;
       break;
     }
@@ -748,7 +748,7 @@ export async function loadConfig(
     configFileName = basename(path);
     let userConfigModule: any;
     try {
-      userConfigModule = assets['/' + path].module;
+      userConfigModule = moduleAssets.getAsset('/' + path)?.getStaticModule();
     } catch (err) {
       Log.error(
         `Failed to load ${configFileName}, see more info here https://nextjs.org/docs/messages/next-config-error`
@@ -832,7 +832,7 @@ export async function loadConfig(
 
     let nonJsPath: string | null = null;
     for(const file of checkFiles) {
-      if ('/' + file in assets) {
+      if ('/' + file in moduleAssets) {
         nonJsPath = file;
         break;
       }

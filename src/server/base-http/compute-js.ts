@@ -3,9 +3,9 @@
  * Licensed under the MIT license. See LICENSE file for details.
  */
 
-import type { IncomingMessage } from 'http';
-
 import { NodeNextRequest, NodeNextResponse } from 'next/dist/server/base-http/node';
+
+import type { IncomingMessage } from 'http';
 
 export class ComputeJsNextRequest extends NodeNextRequest {
   constructor(req: IncomingMessage, public client: ClientInfo) {
@@ -15,8 +15,4 @@ export class ComputeJsNextRequest extends NodeNextRequest {
 export class ComputeJsNextResponse extends NodeNextResponse {
   // Whether to handle compression for this response
   compress?: boolean;
-
-  // If this is set, then we use this response rather than
-  // the response built through the buffer.
-  overrideResponse?: Response;
 }
