@@ -3,7 +3,7 @@
   "compilerOptions": {
     "types": [],
     "rootDir": "src",
-    "outDir": "build/esm",
+    "outDir": "build/src",
     "declaration": true,
     "declarationMap": true,
     "skipLibCheck": true

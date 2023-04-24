@@ -5,13 +5,14 @@
 
 /// <reference types='@fastly/js-compute' />
 
-import { ComputeJsNextRequest, ComputeJsNextResponse } from './server/base-http/compute-js';
-import createServer, { NextServer } from './server/next';
+import NextComputeJsServer from './server/next-compute-js-server';
+import { initFsAssets, initFs, getFsSettings } from './server/fs';
 
 export {
-  NextServer,
-  ComputeJsNextResponse,
-  ComputeJsNextRequest,
+  initFs,
+  initFsAssets,
+  getFsSettings,
+  NextComputeJsServer,
 };
 
-export default createServer;
+export default NextComputeJsServer;

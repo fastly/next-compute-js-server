@@ -9,22 +9,22 @@ import { join } from 'path';
 
 import { BUILD_MANIFEST, FLIGHT_MANIFEST, REACT_LOADABLE_MANIFEST } from 'next/constants';
 import { interopDefault } from 'next/dist/lib/interop-default';
-import { readAssetManifest, requirePage } from './require';
+import { requireManifest, requirePage } from './require';
 
-import type { ContentAssets, ModuleAssets } from "@fastly/compute-js-static-publish";
 import type { LoadComponentsReturnType } from 'next/dist/server/load-components';
 
 /**
  * Loads React component associated with a given pathname.
  * (An adaptation for Compute@Edge of function in Next.js of the same name,
  * found at next/server/load-components.ts)
+ *
+ * Differences:
+ *  * serverless is not supported
+ *  * use
  */
 export async function loadComponents(
-  contentAssets: ContentAssets,
-  moduleAssets: ModuleAssets,
   distDir: string,
   pathname: string,
-  dir: string,
   serverless: boolean,
   hasServerComponents: boolean,
   isAppPath: boolean
@@ -38,23 +38,23 @@ export async function loadComponents(
   if (!isAppPath) {
     [DocumentMod, AppMod] = await Promise.all([
       Promise.resolve().then(() =>
-        requirePage(contentAssets, moduleAssets, '/_document', dir, distDir, serverless, false)
+        requirePage('/_document', distDir, serverless, false)
       ),
       Promise.resolve().then(() =>
-        requirePage(contentAssets, moduleAssets, '/_app', dir, distDir, serverless, false)
+        requirePage('/_app', distDir, serverless, false)
       ),
     ]);
   }
 
   const ComponentMod = await Promise.resolve().then(() =>
-    requirePage(contentAssets, moduleAssets, pathname, dir, distDir, serverless, isAppPath)
+    requirePage(pathname, distDir, serverless, isAppPath)
   );
 
   const [buildManifest, reactLoadableManifest, serverComponentManifest] = await Promise.all([
-    readAssetManifest(contentAssets, join(distDir, BUILD_MANIFEST), dir),
-    readAssetManifest(contentAssets, join(distDir, REACT_LOADABLE_MANIFEST), dir),
+    requireManifest(join(distDir, BUILD_MANIFEST)),
+    requireManifest(join(distDir, REACT_LOADABLE_MANIFEST)),
     hasServerComponents
-      ? readAssetManifest(contentAssets, join(distDir, 'server', FLIGHT_MANIFEST + '.json'), dir)
+      ? requireManifest(join(distDir, 'server', FLIGHT_MANIFEST + '.json'))
       : null,
   ]);
 
