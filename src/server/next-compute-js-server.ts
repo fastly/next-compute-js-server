@@ -89,10 +89,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //   process.env.__NEXT_SCRIPT_WORKERS = JSON.stringify(true);
     // }
 
-    // if (!this.minimalMode) {
-    //   // We are always in minimal mode, so we won't need to do image optimizer here
-    // }
-    //
     // if (!options.dev) {
     //   // We are always in prod mode, so we should always be in here
     //
@@ -126,7 +122,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected loadEnvConfig(): void {
-    // NOTE: env config not loaded for Compute@Edge
+    // NOTE: env config not loaded for Compute@Edge, here to fulfill abstract function
   }
 
   protected getResponseCache() {
@@ -134,12 +130,13 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getPublicDir(): string {
-    // NOTE: Unused, here to fulfill abstract function
+    // NOTE: Unused in minimal mode, here to fulfill abstract function
+    // this fills in getPublicDir(), but this.publicDir is unused in minimal mode
     return '';
   }
 
   protected getHasStaticDir(): boolean {
-    // NOTE: Unused, here to fulfill abstract function
+    // NOTE: Unused in minimal mode, here to fulfill abstract function
     return false;
   }
 
@@ -159,7 +156,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getFilesystemPaths(): Set<string> {
-    // NOTE: Unused, here to fulfill abstract function
+    // NOTE: Unused in minimal mode, here to fulfill abstract function
     return new Set<string>();
   }
 
@@ -172,6 +169,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getCustomRoutes(): CustomRoutes {
+    // NOTE: Unused in minimal mode, here to fulfill abstract function
     // This all happens at the serve-vercel-build-output layer
     return {
       headers: [],
@@ -637,15 +635,12 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     };
   }
 
-  // Used to build API page in development
-  protected async ensureApiPage(_pathname: string): Promise<void> {
-  }
-
   /**
-   * Resolves `API` request, in development builds on demand
+   * Resolves `API` request
    * @param req http request
    * @param res http response
    * @param pathname path of request
+   * @param query
    */
   protected async handleApiRequest(
     req: BaseNextRequest,
@@ -671,9 +666,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     if (!pageFound) {
       return false;
     }
-    // Make sure the page is built before getting the path
-    // or else it won't be in the manifest yet
-    await this.ensureApiPage(page);
 
     let builtPagePath
     try {
