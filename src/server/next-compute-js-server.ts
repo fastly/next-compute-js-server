@@ -42,6 +42,8 @@ import { Params} from 'next/dist/shared/lib/router/utils/route-matcher';
 import { PageNotFoundError } from 'next/dist/shared/lib/utils';
 import { NodeNextRequest, NodeNextResponse } from 'next/dist/server/base-http/node';
 
+import { toComputeResponse, toReqRes } from '@fastly/http-compute-js';
+
 import {
   getPagePath,
   requireManifest,
@@ -64,6 +66,8 @@ export interface ComputeJsServerOptions extends Options {
       Pick<BaseServer['renderOpts'], 'buildId'>;
   };
 }
+
+export type ComputeJsRequestHandler = (request: Request) => Promise<Response>;
 
 /**
  * An implementation of a Next.js server that has been adapted to run in Compute@Edge.
@@ -264,6 +268,15 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         this.normalizeRes(res),
         parsedUrl
       );
+    };
+  }
+
+  public getComputeJsRequestHandler(): ComputeJsRequestHandler {
+    const handler = this.getRequestHandler();
+    return async (request: Request) => {
+      const { req, res } = toReqRes(request);
+      await handler(req, res);
+      return await toComputeResponse(res);
     };
   }
 
