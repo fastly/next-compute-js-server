@@ -2,13 +2,13 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": [],
-    "rootDir": "src",
-    "outDir": "build/src",
+    "rootDir": "src/server",
+    "outDir": "dist/server",
     "declaration": true,
     "declarationMap": true,
     "skipLibCheck": true
   },
   "include": [
-    "./src/**/*.ts"
+    "./src/server/**/*.ts"
   ]
 }

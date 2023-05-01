@@ -3,15 +3,16 @@
   "version": "0.1.0",
   "license": "MIT",
   "description": "Next.js 12.3.0 Runtime for Fastly Compute@Edge",
-  "main": "./build/src/index.js",
-  "types": "./build/src/index.d.ts",
+  "main": "./dist/server/index.js",
+  "types": "./dist/server/index.d.ts",
   "scripts": {
     "prepack": "npm run build",
-    "clean": "rimraf build",
-    "build": "npm run test && npm run clean && npm run build-package",
-    "build-package": "npm run build-package:compile",
-    "build-package:compile": "tsc --build tsconfig.build.json",
-    "test": "c8 mocha -n no-warnings=86652 -n loader=ts-node/esm --extension ts --require test/mocha_bootstrap.js test/testHelpers.ts test/**/*.test.ts"
+    "clean": "rimraf dist",
+    "build": "npm run test && npm run clean && npm run build-server",
+    "build-server": "npm run build-server:compile",
+    "build-server:compile": "tsc --build tsconfig.server.json",
+    "test": "npm run test-server",
+    "test-server": "c8 mocha -n no-warnings=86652 -n loader=ts-node/esm --extension ts --require test/mocha_bootstrap.js test/testHelpers.ts test/**/*.test.ts"
   },
   "peerDependencies": {
     "next": "12.3.0",
@@ -42,9 +43,9 @@
     "typescript": "^5.0.4"
   },
   "files": [
-    "build/src/**/*.js",
-    "build/src/**/*.js.map",
-    "build/src/**/*.d.ts",
+    "dist/src/**/*.js",
+    "dist/src/**/*.js.map",
+    "dist/src/**/*.d.ts",
     "LICENSE",
     "README.md",
     "SECURITY.md"

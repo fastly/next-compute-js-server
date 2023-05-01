@@ -5,8 +5,8 @@
 
 /// <reference types='@fastly/js-compute' />
 
-import NextComputeJsServer from './server/next-compute-js-server';
-import { initFsAssets, initFs, getFsSettings } from './server/fs';
+import NextComputeJsServer from './next-compute-js-server';
+import { initFsAssets, initFs, getFsSettings } from './fs';
 
 export {
   initFs,
