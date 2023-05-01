@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src/transform",
+    "outDir": "dist/transform",
+    "skipLibCheck": true
+  },
+  "include": [
+    "./src/transform/**/*.ts"
+  ]
+}
