@@ -264,17 +264,17 @@ function loadNextConfig(projectPath: string) {
 
 }
 
-function buildFastlyNextLauncherScript(ctx: NextLauncherData) {
+function buildFastlyNextLauncherScript(data: NextLauncherData) {
 
-  const page = mapFunctionPathToPageRoute(ctx.fsRoot);
+  const page = mapFunctionPathToPageRoute(data.fsRoot);
 
   return `
-    const { default: NextComputeJsServer, initFs } = require(${JSON.stringify(ctx.nextRuntimePackage)};
+    const { default: NextComputeJsServer, initFs } = require(${JSON.stringify(data.nextRuntimePackage)});
     
-    const conf = ${JSON.stringify(ctx.conf)};
-    const fsRoot = ${JSON.stringify(ctx.fsRoot)};
+    const conf = ${JSON.stringify(data.conf)};
+    const fsRoot = ${JSON.stringify(data.fsRoot)};
     const page = ${JSON.stringify(page)};
-    const buildId = ${JSON.stringify(ctx.buildId)};
+    const buildId = ${JSON.stringify(data.buildId)};
     
     initFs(fsRoot);
     
