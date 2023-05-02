@@ -6,6 +6,8 @@ import {
   SERVER_FILES_MANIFEST,
 } from 'next/constants';
 
+const VERCEL_FUNCTION_CONFIG_FILENAME = '.vc-config.json';
+
 const DIST_DIR = '.next'; // vercel build always uses .next
 const NEXT_VERSION = '12.3.0';
 const NEXT_LAUNCHER_FILENAME = '___next_launcher.cjs';
@@ -127,6 +129,24 @@ async function transformFunction(
     { recursive: true, }
   );
 
+  // Create a new .vc-config.json file for the transformed function
+  const newVcConfig: VcConfigEdge = {
+    runtime: 'edge',
+    deploymentTarget: 'v8-worker',
+    name: mapFunctionPathToPageRoute(ctx.functionPath),
+    entrypoint: FASTLY_NEXT_LAUNCHER_FILENAME,
+    framework: {
+      slug: 'nextjs',
+      version: NEXT_VERSION,
+    },
+  };
+
+  fs.writeFileSync(
+    path.join(ctx.functionFilesTargetPath, VERCEL_FUNCTION_CONFIG_FILENAME),
+    JSON.stringify(newVcConfig, undefined, 2),
+    'utf-8'
+  );
+
 }
 
 transformFunction.transformType = 'transformFunction';
@@ -160,7 +180,7 @@ function loadVcConfig(functionPath: string): VcConfig | null {
   // Loads the "vercel config file" (.vc-config.json)
   // or, returns null, if it is not any of the known config file types
 
-  const vcConfigFilePath = path.join(functionPath, '.vc-config.json');
+  const vcConfigFilePath = path.join(functionPath, VERCEL_FUNCTION_CONFIG_FILENAME);
 
   let vcConfigFile;
   try {
