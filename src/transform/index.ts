@@ -14,6 +14,8 @@ const NEXT_LAUNCHER_FILENAME = '___next_launcher.cjs';
 
 const FASTLY_NEXT_LAUNCHER_FILENAME = '___fastly_next_launcher.cjs';
 
+const INIT_SCRIPT_FILENAME = `next-compute-js-server-${NEXT_VERSION}.cjs`;
+
 type NextLauncherData = {
   nextRuntimePackage: string,        // will be equal to transformName
   conf: NextConfig,                  // get this by going into DIST_DIR/
@@ -147,6 +149,19 @@ async function transformFunction(
     'utf-8'
   );
 
+  // Create /init/ script. This needs to happen only once regardless of the number of
+  // times this plugin runs
+
+  if (!fs.existsSync(path.join(ctx.buildOutputPath, 'init', INIT_SCRIPT_FILENAME))) {
+
+    const initScript = buildInitScript(ctx.transformName);
+    fs.writeFileSync(
+      path.join(ctx.buildOutputPath, 'init', INIT_SCRIPT_FILENAME),
+      initScript,
+      'utf-8'
+    );
+
+  }
 }
 
 transformFunction.transformType = 'transformFunction';
@@ -279,6 +294,15 @@ function buildFastlyNextLauncherScript(ctx: NextLauncherData) {
 
     module.exports = async (request, context) => {
       return await handler(request);
+    };
+  `;
+}
+
+function buildInitScript(nextRuntimePackage: string) {
+  return `
+    module.exports = function({contentAssets, moduleAssets}) {
+      const { initFsAssets } = require(${JSON.stringify(nextRuntimePackage)});
+      initFsAssets(contentAssets, moduleAssets);
     };
   `;
 }
