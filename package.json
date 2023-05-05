@@ -25,6 +25,7 @@
     "@fastly/compute-js-static-publish": "^4.2.0",
     "@fastly/http-compute-js": "^0.4.0",
     "@fastly/js-compute": "^1.11.2",
+    "@fastly/serve-vercel-build-output": "file:../serve-vercel-build-output/fastly-serve-vercel-build-output-0.1.0-alpha.0.tgz",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.0",
     "events": "^3.3.0",
@@ -56,12 +57,12 @@
     "typescript": "^5.0.4"
   },
   "files": [
-    "dist/src/**/*.js",
-    "dist/src/**/*.js.map",
-    "dist/src/**/*.d.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
     "LICENSE",
     "README.md",
     "SECURITY.md"
   ],
-  "@fastly/svbo-transform": "./dist/transform/index.js"
+  "@fastly/vercel-transform": "./dist/transform/index.js"
 }

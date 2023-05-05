@@ -1,10 +1,16 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import type { NextConfig } from 'next';
 import {
   BUILD_ID_FILE,
   SERVER_FILES_MANIFEST,
 } from 'next/constants';
+
+import type { NextConfig } from 'next';
+import type {
+  VcFrameworkDef,
+  VcConfigEdge,
+  TransformContext,
+} from '@fastly/serve-vercel-build-output';
 
 const VERCEL_FUNCTION_CONFIG_FILENAME = '.vc-config.json';
 
@@ -21,30 +27,6 @@ type NextLauncherData = {
   conf: NextConfig,                  // get this by going into DIST_DIR/
   fsRoot: string,                    // this is the directory
   buildId: string,                   // get this by going into DIST_DIR/BUILD_ID
-};
-
-type TransformContext = {
-  transformName: string,             // package name of the transform
-  functionPath: string,              // relative function path (relative to vercel output dir)
-  functionFilesSourcePath: string,   // full local path to original copy of function files
-  functionFilesTargetPath: string,   // full local path to default target copy of function files
-  nextProjectPath: string,           // full local path to project files
-  buildOutputPath: string,           // full local path to build output path
-};
-
-type VcFrameworkDef = {
-  slug: string,
-  version: string,
-};
-
-type VcConfigEdge = {
-  runtime: 'edge',
-  deploymentTarget: 'v8-worker',
-  name: string,
-  entrypoint: string,
-  envVarsInUse?: string[],
-  assets?: string[],
-  framework?: VcFrameworkDef,
 };
 
 type VcConfigServerless = {
@@ -72,32 +54,30 @@ async function transformFunction(
   let functionSkipReason: string | null = null;
 
   if (fs.existsSync(ctx.functionFilesTargetPath)) {
-    functionSkipReason = `Target directory '${ctx.functionFilesTargetPath}' already exists.`;
+    functionSkipReason = `target directory '${ctx.functionFilesTargetPath}' already exists.`;
   } else if (vcConfig == null) {
-    functionSkipReason = 'Unrecognized .vc-config.json.';
+    functionSkipReason = 'unrecognized .vc-config.json.';
   } else if (vcConfig.runtime === 'edge') {
-    functionSkipReason = 'Skipping edge function.';
+    functionSkipReason = 'edge function.';
   } else if (!vcConfig.runtime.startsWith('nodejs')) {
-    functionSkipReason = 'Skipping non-nodejs function.';
+    functionSkipReason = 'non-nodejs function.';
+  } else if (vcConfig.framework == null) {
+    functionSkipReason = `.vc-config.json contains no 'framework' value.`;
+  } else if (vcConfig.framework.slug !== 'nextjs') {
+    functionSkipReason = `.vc-config.json specifies 'framework.slug' other than 'nextjs': ${vcConfig.framework.slug}.`;
   } else {
     let nextSkipReason: string | null = null;
-    if (vcConfig.handler !== NEXT_LAUNCHER_FILENAME) {
-      nextSkipReason = `Next Launcher '${NEXT_LAUNCHER_FILENAME}' missing.`;
-    } else {
-      if (vcConfig.framework == null ||
-        vcConfig.framework.slug !== 'nextjs' ||
-        vcConfig.framework.version !== NEXT_VERSION
-      ) {
-        nextSkipReason = `Unmatched Next versions.`;
-      }
+    if (vcConfig.framework.version !== NEXT_VERSION) {
+      nextSkipReason = `.vc-config.json specifies incompatible Next.js versio. Expected '${NEXT_VERSION}', found '${vcConfig.framework.version}'.`;
+    } else if (vcConfig.handler !== NEXT_LAUNCHER_FILENAME) {
+      nextSkipReason = `.vc-config.json contains unexpected 'launcher' value. Expected '${NEXT_LAUNCHER_FILENAME}', found '${vcConfig.handler ?? '(no value)'}'.`;
     }
     if (nextSkipReason != null) {
-      functionSkipReason = `Skipping: ${nextSkipReason}`;
+      functionSkipReason = `Skipping Next.js app - ${nextSkipReason}`;
     }
   }
   if (functionSkipReason != null) {
-    console.debug(`${ctx.transformName} transform: Skipping '${ctx.functionPath}'`);
-    console.debug(functionSkipReason);
+    console.debug(`${ctx.transformName} transform: Not performing transform on '${ctx.functionPath}' - ${functionSkipReason}`);
     return;
   }
 
@@ -152,16 +132,23 @@ async function transformFunction(
   // Create /init/ script. This needs to happen only once regardless of the number of
   // times this plugin runs
 
-  if (!fs.existsSync(path.join(ctx.buildOutputPath, 'init', INIT_SCRIPT_FILENAME))) {
+  const initScriptPath = path.join(ctx.buildOutputPath, 'init', INIT_SCRIPT_FILENAME);
+
+  if (!fs.existsSync(initScriptPath)) {
 
     const initScript = buildInitScript(ctx.transformName);
+    fs.mkdirSync(path.dirname(initScriptPath), { recursive: true });
     fs.writeFileSync(
-      path.join(ctx.buildOutputPath, 'init', INIT_SCRIPT_FILENAME),
+      initScriptPath,
       initScript,
       'utf-8'
     );
 
   }
+
+  // Return true, signaling that this transform has completed an action
+  // and that no further action should be taken on this function.
+  return true;
 }
 
 transformFunction.transformType = 'transformFunction';
