@@ -6,7 +6,6 @@ import {
 } from '@fastly/serve-vercel-build-output';
 
 import {
-  BUILD_ID_FILE,
   SERVER_FILES_MANIFEST,
 } from 'next/constants';
 import {
@@ -20,6 +19,7 @@ import {
 import {
   mapFunctionPathToFunctionName,
 } from "./util";
+import { copyFiles, writeFile } from './file';
 
 type NextLauncherData = {
   nextRuntimePackage: string,        // will be equal to transformName
@@ -41,6 +41,8 @@ export function validateConfig(vcConfig: VcConfigServerless) {
 
 export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext) {
 
+  console.log(`Next.js nodejs transform STARTING for '${ctx.functionPath}'.`);
+
   // Create the output directory
   fs.mkdirSync(ctx.functionFilesTargetPath, { recursive: true });
 
@@ -54,17 +56,17 @@ export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext)
     conf,
   });
 
-  fs.writeFileSync(
+  writeFile(
     path.join(ctx.functionFilesTargetPath, FASTLY_NEXT_LAUNCHER_FILENAME),
     fastlyNextLauncherScript,
-    'utf-8'
+    'Fastly Next.js Launcher'
   );
 
   // Copy next build output files between .next directories
-  fs.cpSync(
+  copyFiles(
     path.join(ctx.functionFilesSourcePath, DIST_DIR),
     path.join(ctx.functionFilesTargetPath, DIST_DIR),
-    { recursive: true, }
+    `'${DIST_DIR}' files`
   );
 
   // Create a new .vc-config.json file for the transformed function
@@ -79,10 +81,10 @@ export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext)
     },
   };
 
-  fs.writeFileSync(
+  writeFile(
     path.join(ctx.functionFilesTargetPath, VERCEL_FUNCTION_CONFIG_FILENAME),
     JSON.stringify(newVcConfig, undefined, 2),
-    'utf-8'
+    'Function Config file'
   );
 
   // Create /init/ script. This needs to happen only once regardless of the number of
@@ -91,15 +93,19 @@ export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext)
 
   if (!fs.existsSync(initScriptPath)) {
 
-    const initScript = buildInitScript(ctx.transformName);
     fs.mkdirSync(path.dirname(initScriptPath), { recursive: true });
-    fs.writeFileSync(
+
+    const initScript = buildInitScript(ctx.transformName);
+    writeFile(
       initScriptPath,
       initScript,
-      'utf-8'
+      'Plugin Init script'
     );
 
   }
+
+  console.log(`Next.js nodejs transform COMPLETED for '${ctx.functionPath}'.`);
+
 }
 
 function loadNextConfig(projectPath: string) {
