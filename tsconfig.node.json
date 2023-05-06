@@ -2,11 +2,11 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
-    "rootDir": "src/transform",
-    "outDir": "dist/transform",
+    "rootDir": "src/node",
+    "outDir": "dist/node",
     "skipLibCheck": true
   },
   "include": [
-    "./src/transform/**/*.ts"
+    "./src/node/**/*.ts"
   ]
 }
