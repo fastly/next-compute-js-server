@@ -24,7 +24,6 @@ import {
 type NextLauncherData = {
   nextRuntimePackage: string,        // will be equal to transformName
   conf: NextConfig,                  // get this by going into DIST_DIR/
-  fsRoot: string,                    // this is the directory
 };
 
 const DIST_DIR = '.next'; // vercel build always uses .next
@@ -52,7 +51,6 @@ export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext)
   // Generate and write the fastly launcher script
   const fastlyNextLauncherScript = buildFastlyNextLauncherScript({
     nextRuntimePackage: ctx.transformName,
-    fsRoot: ctx.functionPath,
     conf,
   });
 
@@ -133,9 +131,8 @@ function buildFastlyNextLauncherScript(data: NextLauncherData) {
     const { default: NextComputeJsServer, initFs } = require(${JSON.stringify(data.nextRuntimePackage)});
     
     const conf = ${JSON.stringify(data.conf)};
-    const fsRoot = ${JSON.stringify(data.fsRoot)};
     
-    initFs(fsRoot);
+    initFs(globalThis.FASTLY_SVBO_PWD);
     
     const nextServer = new NextComputeJsServer({
       conf,
