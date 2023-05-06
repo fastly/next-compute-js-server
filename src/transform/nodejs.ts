@@ -18,7 +18,6 @@ import {
   VcConfigServerless,
 } from "./constants";
 import {
-  mapFunctionNameToPageRoute,
   mapFunctionPathToFunctionName,
 } from "./util";
 
@@ -26,7 +25,6 @@ type NextLauncherData = {
   nextRuntimePackage: string,        // will be equal to transformName
   conf: NextConfig,                  // get this by going into DIST_DIR/
   fsRoot: string,                    // this is the directory
-  buildId: string,                   // get this by going into DIST_DIR/BUILD_ID
 };
 
 const DIST_DIR = '.next'; // vercel build always uses .next
@@ -47,18 +45,15 @@ export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext)
   // Create the output directory
   fs.mkdirSync(ctx.functionFilesTargetPath, { recursive: true });
 
-  // BUILD_ID in the function's directory
-  const buildId = loadBuildId(ctx.functionFilesSourcePath);
-
   // Next.js config taken from SERVER_FILES_MANIFEST from project root
   const nextConfig = loadNextConfig(ctx.nextProjectPath);
+  const conf = Object.assign({}, nextConfig, { compress: false });
 
   // Generate and write the fastly launcher script
   const fastlyNextLauncherScript = buildFastlyNextLauncherScript({
     nextRuntimePackage: ctx.transformName,
     fsRoot: ctx.functionPath,
-    conf: nextConfig,
-    buildId,
+    conf,
   });
 
   fs.writeFileSync(
@@ -109,27 +104,6 @@ export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext)
   }
 }
 
-
-function loadBuildId(projectPath: string) {
-
-  const nextDirectory = path.join(projectPath, DIST_DIR);
-
-  const buildIdFilePath = path.join(nextDirectory, BUILD_ID_FILE);
-
-  let buildIdFileContent;
-  try {
-    buildIdFileContent = fs.readFileSync(buildIdFilePath, 'utf-8').trim();
-  } catch(ex) {
-    throw new Error(`Error loading build ID file \`${buildIdFileContent}'.`, { cause: ex });
-  }
-
-  if (buildIdFileContent === '') {
-    throw new Error(`Build ID file \`${buildIdFileContent}' is empty.`);
-  }
-
-  return buildIdFileContent;
-}
-
 function loadNextConfig(projectPath: string) {
 
   const nextDirectory = path.join(projectPath, DIST_DIR);
@@ -155,26 +129,19 @@ function loadNextConfig(projectPath: string) {
 
 function buildFastlyNextLauncherScript(data: NextLauncherData) {
 
-  const functionName = mapFunctionPathToFunctionName(data.fsRoot);
-  const pageRoute = mapFunctionNameToPageRoute(functionName);
-
   return `
     const { default: NextComputeJsServer, initFs } = require(${JSON.stringify(data.nextRuntimePackage)});
     
     const conf = ${JSON.stringify(data.conf)};
     const fsRoot = ${JSON.stringify(data.fsRoot)};
-    const page = ${JSON.stringify(pageRoute)};
-    const buildId = ${JSON.stringify(data.buildId)};
     
     initFs(fsRoot);
     
     const nextServer = new NextComputeJsServer({
       conf,
       computeJsConfig: {
-        page,
         extendRenderOpts: {
           runtime: "experimental-edge",
-          buildId,
         },
       },
       minimalMode: true,

@@ -29,29 +29,6 @@ export function mapFunctionPathToFunctionName(functionPath: string) {
 
 }
 
-// Map a function's name to its page route
-// eg:
-//    index          -> /
-//    foo/bar        -> /foo/bar
-//    foo/bar/index  -> /foo/bar
-//    /foo/bar/index -> /foo/bar
-export function mapFunctionNameToPageRoute(functionName: string) {
-
-  let adjustedFunctionName = functionName;
-
-  if (!adjustedFunctionName.startsWith('/')) {
-    adjustedFunctionName = '/' + adjustedFunctionName;
-  }
-
-  if (adjustedFunctionName === '/index') {
-    adjustedFunctionName = '/';
-  } else if (adjustedFunctionName.endsWith('/index')) {
-    adjustedFunctionName = adjustedFunctionName.slice(0, -('/index'.length));
-  }
-
-  return adjustedFunctionName;
-}
-
 export function loadVcConfig(functionPath: string): VcConfig | null {
 
   // Loads the "vercel config file" (.vc-config.json)

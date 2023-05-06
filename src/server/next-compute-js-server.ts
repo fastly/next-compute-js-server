@@ -8,9 +8,13 @@
 import { join } from 'path';
 
 import {
+  APP_PATHS_MANIFEST,
+  BUILD_ID_FILE,
   FLIGHT_MANIFEST,
   FLIGHT_SERVER_CSS_MANIFEST,
+  PAGES_MANIFEST,
   PRERENDER_MANIFEST,
+  SERVER_DIRECTORY,
 } from 'next/constants';
 
 import { PrerenderManifest } from 'next/dist/build';
@@ -50,6 +54,7 @@ import {
   requireManifest,
   requireModule,
   requireFontManifest,
+  readAssetFileAsString,
 } from './require';
 import { loadComponents } from './load-components';
 import ComputeJsResponseCache from './response-cache/compute-js';
@@ -62,9 +67,7 @@ import type { NodeRequestHandler } from "next/dist/server/next-server";
 
 export interface ComputeJsServerOptions extends Options {
   computeJsConfig: {
-    page: string;
-    extendRenderOpts: Partial<BaseServer['renderOpts']> &
-      Pick<BaseServer['renderOpts'], 'buildId'>;
+    extendRenderOpts: Partial<BaseServer['renderOpts']>,
   };
 }
 
@@ -146,16 +149,22 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getPagesManifest(): PagesManifest | undefined {
-    return {
-      [this.serverOptions.computeJsConfig.page]: '',
-    };
+    const pagesManifestFile = join(
+      this.distDir,
+      SERVER_DIRECTORY,
+      PAGES_MANIFEST,
+    );
+    return requireManifest(pagesManifestFile);
   }
 
   protected getAppPathsManifest(): PagesManifest | undefined {
     if (this.nextConfig.experimental.appDir) {
-      return {
-        [this.serverOptions.computeJsConfig.page]: '',
-      };
+      const appPathsManifestPath = join(
+        this.distDir,
+        SERVER_DIRECTORY,
+        APP_PATHS_MANIFEST,
+      );
+      return requireManifest(appPathsManifestPath);
     }
     return undefined;
   }
@@ -165,12 +174,17 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     return new Set<string>();
   }
 
-  protected async hasPage(page: string): Promise<boolean> {
-    return page === this.serverOptions.computeJsConfig.page;
+  protected async hasPage(pathname: string): Promise<boolean> {
+    let found = false;
+    try {
+      found = !!this.getPagePath(pathname, this.nextConfig.i18n?.locales);
+    } catch (_) {}
+
+    return found;
   }
 
   protected getBuildId(): string {
-    return this.serverOptions.computeJsConfig.extendRenderOpts.buildId;
+    return readAssetFileAsString(join(this.distDir, BUILD_ID_FILE)).trim();
   }
 
   protected getCustomRoutes(): CustomRoutes {
@@ -433,7 +447,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   protected getServerComponentManifest() {
     // TODO: If we want to support Server Components
     if (!this.nextConfig.experimental.serverComponents) return undefined;
-    return requireManifest(join(this.distDir, 'server', FLIGHT_MANIFEST + '.json'));
+    return requireManifest(join(this.distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json'));
   }
 
   protected getServerCSSManifest() {
@@ -441,7 +455,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     if (!this.nextConfig.experimental.serverComponents) return undefined;
     return requireManifest(join(
       this.distDir,
-      'server',
+      SERVER_DIRECTORY,
       FLIGHT_SERVER_CSS_MANIFEST + '.json'
     ));
   }

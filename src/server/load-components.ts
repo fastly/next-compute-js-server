@@ -7,7 +7,12 @@
 
 import { join } from 'path';
 
-import { BUILD_MANIFEST, FLIGHT_MANIFEST, REACT_LOADABLE_MANIFEST } from 'next/constants';
+import {
+  BUILD_MANIFEST,
+  FLIGHT_MANIFEST,
+  REACT_LOADABLE_MANIFEST,
+  SERVER_DIRECTORY,
+} from 'next/constants';
 import { interopDefault } from 'next/dist/lib/interop-default';
 import { requireManifest, requirePage } from './require';
 
@@ -54,7 +59,7 @@ export async function loadComponents(
     requireManifest(join(distDir, BUILD_MANIFEST)),
     requireManifest(join(distDir, REACT_LOADABLE_MANIFEST)),
     hasServerComponents
-      ? requireManifest(join(distDir, 'server', FLIGHT_MANIFEST + '.json'))
+      ? requireManifest(join(distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json'))
       : null,
   ]);
 
