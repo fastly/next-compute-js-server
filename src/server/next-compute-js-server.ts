@@ -27,6 +27,7 @@ import BaseServer, {
 import { getClonableBody } from 'next/dist/server/body-streams';
 import { FontManifest} from 'next/dist/server/font-utils';
 import { RenderOpts, renderToHTML } from 'next/dist/server/render';
+import { renderToHTMLOrFlight as appRenderToHTMLOrFlight } from 'next/dist/server/app-render';
 import { addRequestMeta, NextParsedUrlQuery, NextUrlWithParsedQuery } from 'next/dist/server/request-meta';
 import { DynamicRoutes, PageChecker, Route } from 'next/dist/server/router';
 import { PayloadOptions, sendRenderResult } from 'next/dist/server/send-payload';
@@ -312,8 +313,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     renderOpts.serverComponentManifest = this.serverComponentManifest
     renderOpts.serverCSSManifest = this.serverCSSManifest
 
-    // TODO: To support appDir
-    /*
     if (
       this.nextConfig.experimental.appDir &&
       (renderOpts.isAppPath || query.__flight__)
@@ -328,7 +327,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         isPagesDir
       )
     }
-     */
 
     return renderToHTML(
       req.originalRequest,
