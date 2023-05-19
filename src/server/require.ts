@@ -42,10 +42,10 @@ export function getPagePath(
     distDir,
     SERVER_DIRECTORY
   );
-  let rootPathsManifest: undefined | PagesManifest;
+  let appPathsManifest: undefined | PagesManifest;
 
   if (appDirEnabled) {
-    rootPathsManifest = requireManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
+    appPathsManifest = requireManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
   }
   const pagesManifest = requireManifest(join(
     serverBuildPath,
@@ -75,8 +75,8 @@ export function getPagePath(
   }
   let pagePath: string | undefined;
 
-  if (rootPathsManifest) {
-    pagePath = checkManifest(rootPathsManifest);
+  if (appPathsManifest) {
+    pagePath = checkManifest(appPathsManifest);
   }
 
   if (!pagePath) {

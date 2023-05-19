@@ -88,7 +88,9 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
      * `process.env.__NEXT_OPTIMIZE_CSS`.
      */
     // if (this.renderOpts.optimizeFonts) {
-    //   process.env.__NEXT_OPTIMIZE_FONTS = JSON.stringify(true);
+    //   process.env.__NEXT_OPTIMIZE_FONTS = JSON.stringify(
+    //     this.renderOpts.optimizeFonts
+    //   );
     // }
     // if (this.renderOpts.optimizeCss) {
     //   process.env.__NEXT_OPTIMIZE_CSS = JSON.stringify(true);
@@ -102,23 +104,23 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //
     //   // pre-warm _document and _app as these will be
     //   // needed for most requests
-    //   loadComponents(
-    //     this.distDir,
-    //     '/_document',
-    //     false,
-    //     false,
-    //     false,
-    //   ).catch(
+    //   loadComponents({
+    //     distDir: this.distDir,
+    //     pathname: '/_document',
+    //     serverless: false,
+    //     hasServerComponents: false,
+    //     isAppPath: false,
+    //   }).catch(
     //     () => {
     //     }
     //   );
     //
     //   loadComponents(
-    //     this.distDir,
-    //     '/_app',
-    //     false,
-    //     false,
-    //     false,
+    //     distDir: this.distDir,
+    //     pathname: '/_app',
+    //     serverless: false,
+    //     hasServerComponents: false,
+    //     isAppPath: false,
     //   ).catch(
     //     () => {
     //     }
@@ -373,39 +375,37 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     params: Params | null
     isAppPath: boolean
   }): Promise<FindComponentsResult | null> {
-    let paths = [
+    const paths: string[] = [pathname];
+    if (query.amp) {
       // try serving a static AMP version first
-      query.amp ?
-        (isAppPath ?
-          normalizeAppPath(pathname) :
-          normalizePagePath(pathname)
-        ) + '.amp' : null,
-      pathname,
-    ].filter(Boolean);
+      paths.unshift(
+        (isAppPath ? normalizeAppPath(pathname) : normalizePagePath(pathname)) +
+          '.amp'
+      );
+    }
 
     if (query.__nextLocale) {
-      paths = [
+      paths.unshift(
         ...paths.map(
           (path) => `/${query.__nextLocale}${path === '/' ? '' : path}`
-        ),
-        ...paths,
-      ];
+        ));
+
     }
 
     for (const pagePath of paths) {
       try {
-        const components = await loadComponents(
-          this.distDir,
-          pagePath!,
-          false,
-          !!this.renderOpts.serverComponents,
+        const components = await loadComponents({
+          distDir: this.distDir,
+          pathname: pagePath,
+          serverless: false,
+          hasServerComponents: !!this.renderOpts.serverComponents,
           isAppPath,
-        );
+        });
 
         if (
           query.__nextLocale &&
           typeof components.Component === 'string' &&
-          !pagePath?.startsWith(`/${query.__nextLocale}`)
+          !pagePath.startsWith(`/${query.__nextLocale}`)
         ) {
           // if loading a static HTML file the locale is required
           // to be present since all HTML files are output under their locale
