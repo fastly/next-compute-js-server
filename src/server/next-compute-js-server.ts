@@ -32,7 +32,12 @@ import { getClonableBody } from 'next/dist/server/body-streams';
 import { FontManifest} from 'next/dist/server/font-utils';
 import { RenderOpts, renderToHTML } from 'next/dist/server/render';
 import { renderToHTMLOrFlight as appRenderToHTMLOrFlight } from 'next/dist/server/app-render';
-import { addRequestMeta, NextParsedUrlQuery, NextUrlWithParsedQuery } from 'next/dist/server/request-meta';
+import {
+  addRequestMeta,
+  getRequestMeta,
+  NextParsedUrlQuery,
+  NextUrlWithParsedQuery,
+} from 'next/dist/server/request-meta';
 import { DynamicRoutes, PageChecker, Route } from 'next/dist/server/router';
 import { PayloadOptions, sendRenderResult } from 'next/dist/server/send-payload';
 import { detectDomainLocale } from 'next/dist/shared/lib/i18n/detect-domain-locale';
@@ -490,10 +495,18 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         name: '_next/data catchall',
         check: true,
         fn: async (req, res, params, _parsedUrl) => {
+          const isNextDataNormalizing = getRequestMeta(
+            req,
+            '_nextDataNormalizing'
+          );
+
           // Make sure to 404 for /_next/data/ itself and
           // we also want to 404 if the buildId isn't correct
           if (!params.path || params.path[0] !== this.buildId) {
-            await this.render404(req, res, _parsedUrl)
+            if (isNextDataNormalizing) {
+              return { finished: false };
+            }
+            await this.render404(req, res, _parsedUrl);
             return {
               finished: true,
             };
