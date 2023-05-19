@@ -5,7 +5,7 @@ import type {
 } from '@fastly/serve-vercel-build-output';
 
 import {
-  NEXT_VERSION,
+  COMPATIBLE_NEXT_VERSIONS,
   VcConfigServerless,
 } from './constants';
 import {
@@ -35,8 +35,8 @@ async function transformFunction(
     functionSkipReason = `.vc-config.json contains no 'framework' value.`;
   } else if (vcConfig.framework.slug !== 'nextjs') {
     functionSkipReason = `.vc-config.json specifies 'framework.slug' other than 'nextjs': ${vcConfig.framework.slug}.`;
-  } else if (vcConfig.framework.version !== NEXT_VERSION) {
-    functionSkipReason = `.vc-config.json specifies incompatible Next.js version. Expected '${NEXT_VERSION}', found '${vcConfig.framework.version}'.`;
+  } else if (!COMPATIBLE_NEXT_VERSIONS.includes(vcConfig.framework.version)) {
+    functionSkipReason = `.vc-config.json specifies incompatible Next.js version. Expected ${COMPATIBLE_NEXT_VERSIONS.length > 0 ? 'one of ' : ''}${COMPATIBLE_NEXT_VERSIONS.map(v => `'${v}'`).join(', ')}, found '${vcConfig.framework.version}'.`;
   } else {
 
     try {
