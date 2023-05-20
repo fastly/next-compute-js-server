@@ -52,6 +52,7 @@ import { removeTrailingSlash } from 'next/dist/shared/lib/router/utils/remove-tr
 import { Params} from 'next/dist/shared/lib/router/utils/route-matcher';
 import { PageNotFoundError } from 'next/dist/shared/lib/utils';
 import { NodeNextRequest, NodeNextResponse } from 'next/dist/server/base-http/node';
+import { isAPIRoute } from "next/dist/lib/is-api-route";
 
 import { toComputeResponse, toReqRes } from '@fastly/http-compute-js';
 
@@ -144,6 +145,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
   protected loadEnvConfig(): void {
     // NOTE: env config not loaded for Compute@Edge, here to fulfill abstract function
+  }
+
+  protected getIncrementalCache() {
+    return {} as any;
   }
 
   protected getResponseCache() {
@@ -612,7 +617,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         }
         const bubbleNoFallback = !!query._nextBubbleNoFallback;
 
-        if (pathname === '/api' || pathname.startsWith('/api/')) {
+        if (isAPIRoute(pathname)) {
           delete query._nextBubbleNoFallback;
 
           // NOTE (Fastly): Unlike the WebServer implementation from
@@ -685,7 +690,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     if (!pageFound && this.dynamicRoutes) {
       for (const dynamicRoute of this.dynamicRoutes) {
         params = dynamicRoute.match(pathname) || undefined;
-        if (dynamicRoute.page.startsWith('/api') && params) {
+        if (isAPIRoute(dynamicRoute.page) && params) {
           page = dynamicRoute.page;
           pageFound = true;
           break;
