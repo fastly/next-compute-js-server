@@ -134,11 +134,9 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //   );
     // }
 
-    // if (this.nextConfig.experimental.appDir) {
-    //   // expose AsyncLocalStorage on global for react usage
-    //   const { AsyncLocalStorage } = require('async_hooks')
-    //   ;(global as any).AsyncLocalStorage = AsyncLocalStorage
-    // }
+    // // expose AsyncLocalStorage on global for react usage
+    // const { AsyncLocalStorage } = require('async_hooks')
+    // ;(global as any).AsyncLocalStorage = AsyncLocalStorage
 
     // Extend `renderOpts`.
     Object.assign(this.renderOpts, options.computeJsConfig.extendRenderOpts);
