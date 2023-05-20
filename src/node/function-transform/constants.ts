@@ -26,4 +26,5 @@ export const COMPATIBLE_NEXT_VERSIONS = [
   '13.0.7',
   '13.1.0',
   '13.1.1',
+  '13.1.2',
 ];
