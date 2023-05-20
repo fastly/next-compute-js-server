@@ -265,7 +265,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
             new NodeNextResponse(newRes)
           ),
         // internal config so is not typed
-        trustHostHeader: (this.nextConfig.experimental as any).trustHostHeader,
+        trustHostHeader: (this.nextConfig.experimental as Record<string, any>)
+          .trustHostHeader,
+        allowedRevalidateHeaderKeys:
+          this.nextConfig.experimental.allowedRevalidateHeaderKeys,
       },
       this.minimalMode,
       this.renderOpts.dev,
