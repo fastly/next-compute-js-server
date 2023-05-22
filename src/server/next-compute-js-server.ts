@@ -6,6 +6,7 @@
  */
 
 import { join } from 'path';
+import { env } from "fastly:env";
 
 import {
   APP_PATHS_MANIFEST,
@@ -731,7 +732,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     parsedUrl: NextUrlWithParsedQuery
   ) {
     // In C@E, the protocol is always https on prod and http on dev
-    const hostname = fastly.env.get("FASTLY_HOSTNAME");
+    const hostname = env("FASTLY_HOSTNAME");
     const protocol = hostname !== 'localhost' ? 'https' : 'http';
 
     // When there are hostname and port we build an absolute URL
