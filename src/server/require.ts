@@ -192,8 +192,18 @@ export function requireManifest(
 export async function requireModule(
   path: string,
 ) {
+  // TODO: eventually move this out into its own package
   const { moduleAssets, dir } = getFsSettings();
+  // Do Node.js magic to find file
   const relativePath = resolve(dir, path);
-  const file = moduleAssets.getAsset(relativePath);
-  return file?.getModule();
+  const file =
+    moduleAssets.getAsset(relativePath) ??
+    moduleAssets.getAsset(relativePath + '.js') ??
+    // NOTE: Node.js would check .json here, before index.js
+    moduleAssets.getAsset(relativePath + '/index.js') ??
+    null;
+  if (file == null) {
+    throw { 'code': 'MODULE_NOT_FOUND' };
+  }
+  return file.getModule();
 }
