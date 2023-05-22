@@ -13,10 +13,10 @@ import {
   BUILD_ID_FILE,
   CLIENT_REFERENCE_MANIFEST,
   FLIGHT_SERVER_CSS_MANIFEST,
+  NEXT_FONT_MANIFEST,
   PAGES_MANIFEST,
   PRERENDER_MANIFEST,
   SERVER_DIRECTORY,
-  FONT_LOADER_MANIFEST,
 } from 'next/constants';
 import {
   INSTRUMENTATION_HOOK_FILENAME,
@@ -418,7 +418,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     // https://github.com/vercel/next.js/blob/df7cbd904c3bd85f399d1ce90680c0ecf92d2752/packages/next/server/render.tsx#L947-L952
     renderOpts.serverComponentManifest = this.serverComponentManifest
     renderOpts.serverCSSManifest = this.serverCSSManifest
-    renderOpts.fontLoaderManifest = this.fontLoaderManifest;
+    renderOpts.nextFontManifest = this.nextFontManifest
 
     if (this.hasAppDir && renderOpts.isAppPath) {
       return appRenderToHTMLOrFlight(
@@ -557,8 +557,8 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     ));
   }
 
-  protected getFontLoaderManifest() {
-    return requireManifest(join(this.distDir, 'server', `${FONT_LOADER_MANIFEST}.json`))
+  protected getNextFontManifest() {
+    return requireManifest(join(this.distDir, 'server', `${NEXT_FONT_MANIFEST}.json`))
   }
 
   protected override async getFallback(page: string) {
@@ -710,6 +710,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
           // it.
           // TODO: move this behavior into a route handler.
           if (match.definition.kind === RouteKind.PAGES_API) {
+            if (this.nextConfig.output === 'export') {
+              await this.render404(req, res, parsedUrl);
+              return { finished: true };
+            }
             delete query._nextBubbleNoFallback
 
             handled = await this.handleApiRequest(
@@ -721,6 +725,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
             )
             if (handled) return { finished: true }
           }
+          // else if (match.definition.kind === RouteKind.METADATA_ROUTE) {
+          //   handled = await this.handlers.handle(match, req, res);
+          //   if (handled) return { finished: true };
+          // }
         }
 
         try {

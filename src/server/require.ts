@@ -30,10 +30,10 @@ const pagePathCache = new LRUCache<string, string | null>({
 export function getMaybePagePath(
   page: string,
   distDir: string,
-  locales?: string[],
-  appDirEnabled?: boolean
+  locales: string[] | undefined,
+  isAppPath: boolean
 ) {
-  const cacheKey = `${page}:${distDir}:${locales}`
+  const cacheKey = `${page}:${distDir}:${locales}:${isAppPath}`
 
   if (pagePathCache.has(cacheKey)) {
     return pagePathCache.get(cacheKey) as string | null;
@@ -42,7 +42,7 @@ export function getMaybePagePath(
   const serverBuildPath = join(distDir, SERVER_DIRECTORY);
   let appPathsManifest: undefined | PagesManifest;
 
-  if (appDirEnabled) {
+  if (isAppPath) {
     appPathsManifest = requireManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
   }
 
@@ -101,10 +101,10 @@ export function getMaybePagePath(
 export function getPagePath(
   page: string,
   distDir: string,
-  locales?: string[],
-  appDirEnabled?: boolean
+  locales: string[] | undefined,
+  isAppPath: boolean
 ): string {
-  const pagePath = getMaybePagePath(page, distDir, locales, appDirEnabled);
+  const pagePath = getMaybePagePath(page, distDir, locales, isAppPath);
 
   if (!pagePath) {
     throw new PageNotFoundError(page);
@@ -121,9 +121,9 @@ export function getPagePath(
 export async function requirePage(
   page: string,
   distDir: string,
-  appDirEnabled?: boolean
+  isAppPath: boolean
 ): Promise<any> {
-  const pagePath = getPagePath(page, distDir, undefined, appDirEnabled);
+  const pagePath = getPagePath(page, distDir, undefined, isAppPath);
   if (pagePath.endsWith('.html')) {
     try {
       return readAssetFileAsString(pagePath);
