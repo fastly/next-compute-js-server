@@ -43,7 +43,7 @@ export function getMaybePagePath(
   let appPathsManifest: undefined | PagesManifest;
 
   if (appDirEnabled) {
-    appPathsManifest = require(join(serverBuildPath, APP_PATHS_MANIFEST));
+    appPathsManifest = requireManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
   }
 
   const pagesManifest = requireManifest(join(
