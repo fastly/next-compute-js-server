@@ -456,7 +456,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
   protected getFontLoaderManifest() {
     if (!this.nextConfig.experimental.fontLoaders) return undefined
-    return require(join(this.distDir, 'server', `${FONT_LOADER_MANIFEST}.json`))
+    return requireManifest(join(this.distDir, 'server', `${FONT_LOADER_MANIFEST}.json`))
   }
 
   protected override async getFallback(page: string) {
