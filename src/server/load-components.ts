@@ -9,12 +9,15 @@ import { join } from 'path';
 
 import {
   BUILD_MANIFEST,
-  FLIGHT_MANIFEST,
+  CLIENT_REFERENCE_MANIFEST,
   REACT_LOADABLE_MANIFEST,
   SERVER_DIRECTORY,
+  SERVER_REFERENCE_MANIFEST,
 } from 'next/constants';
 import { interopDefault } from 'next/dist/lib/interop-default';
 import { requireManifest, requirePage } from './require';
+import { getTracer } from 'next/dist/server/lib/trace/tracer';
+import { LoadComponentsSpan } from 'next/dist/server/lib/trace/constants';
 
 import type { LoadComponentsReturnType } from 'next/dist/server/load-components';
 
@@ -27,7 +30,7 @@ import type { LoadComponentsReturnType } from 'next/dist/server/load-components'
  *  * serverless is not supported
  *  * use
  */
-export async function loadComponents({
+export async function loadComponentsImpl({
   distDir,
   pathname,
   hasServerComponents,
@@ -50,12 +53,25 @@ export async function loadComponents({
     requirePage(pathname, distDir, isAppPath)
   );
 
-  const [buildManifest, reactLoadableManifest, serverComponentManifest] =
+  const [
+    buildManifest,
+    reactLoadableManifest,
+    serverComponentManifest,
+    serverActionsManifest,
+  ] =
     await Promise.all([
       requireManifest(join(distDir, BUILD_MANIFEST)),
       requireManifest(join(distDir, REACT_LOADABLE_MANIFEST)),
       hasServerComponents ?
-        requireManifest(join(distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json')) :
+        requireManifest(
+          join(distDir, SERVER_DIRECTORY, CLIENT_REFERENCE_MANIFEST + '.json')
+        ) :
+        null,
+      hasServerComponents ?
+        requireManifest(
+          join(distDir, SERVER_DIRECTORY, SERVER_REFERENCE_MANIFEST + '.json')
+        )
+          .catch(() => null) :
         null,
     ]);
 
@@ -77,7 +93,13 @@ export async function loadComponents({
     getStaticProps,
     getStaticPaths,
     serverComponentManifest,
+    serverActionsManifest,
     isAppPath,
     pathname,
   };
 }
+
+export const loadComponents = getTracer().wrap(
+  LoadComponentsSpan.loadComponents,
+  loadComponentsImpl
+);

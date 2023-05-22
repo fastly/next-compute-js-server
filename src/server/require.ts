@@ -195,5 +195,8 @@ export async function requireModule(
   const { moduleAssets, dir } = getFsSettings();
   const relativePath = resolve(dir, path);
   const file = moduleAssets.getAsset(relativePath);
-  return file?.getModule();
+  if (file == null) {
+    return { 'code': 'MODULE_NOT_FOUND' };
+  }
+  return file.getModule();
 }

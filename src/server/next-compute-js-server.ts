@@ -10,17 +10,19 @@ import { join } from 'path';
 import {
   APP_PATHS_MANIFEST,
   BUILD_ID_FILE,
-  FLIGHT_MANIFEST,
+  CLIENT_REFERENCE_MANIFEST,
   FLIGHT_SERVER_CSS_MANIFEST,
   PAGES_MANIFEST,
   PRERENDER_MANIFEST,
   SERVER_DIRECTORY,
   FONT_LOADER_MANIFEST,
 } from 'next/constants';
+import {
+  INSTRUMENTATION_HOOK_FILENAME,
+} from "next/dist/lib/constants";
 
 import { PrerenderManifest } from 'next/dist/build';
 import { PagesManifest } from 'next/dist/build/webpack/plugins/pages-manifest-plugin';
-import isError from 'next/dist/lib/is-error';
 import { CustomRoutes } from 'next/dist/lib/load-custom-routes';
 import { apiResolver } from 'next/dist/server/api-utils/node';
 import { BaseNextRequest, BaseNextResponse } from 'next/dist/server/base-http';
@@ -29,8 +31,13 @@ import BaseServer, {
   NoFallbackError,
   Options,
 } from 'next/dist/server/base-server';
-import { getClonableBody } from 'next/dist/server/body-streams';
+import { getCloneableBody } from 'next/dist/server/body-streams';
 import { FontManifest } from 'next/dist/server/font-utils';
+import { RouteKind } from "next/dist/server/future/route-kind";
+import { PagesAPIRouteMatch } from "next/dist/server/future/route-matches/pages-api-route-match";
+import { IncrementalCache } from 'next/dist/server/lib/incremental-cache'
+import { NextNodeServerSpan } from 'next/dist/server/lib/trace/constants';
+import { getTracer } from 'next/dist/server/lib/trace/tracer';
 import { RenderOpts, renderToHTML } from 'next/dist/server/render';
 import { renderToHTMLOrFlight as appRenderToHTMLOrFlight } from 'next/dist/server/app-render';
 import {
@@ -39,12 +46,11 @@ import {
   NextParsedUrlQuery,
   NextUrlWithParsedQuery,
 } from 'next/dist/server/request-meta';
-import { DynamicRoutes, PageChecker, Route } from 'next/dist/server/router';
+import { Route, RouterOptions } from 'next/dist/server/router';
 import { PayloadOptions, sendRenderResult } from 'next/dist/server/send-payload';
 import { detectDomainLocale } from 'next/dist/shared/lib/i18n/detect-domain-locale';
 import { normalizeLocalePath } from 'next/dist/shared/lib/i18n/normalize-locale-path';
 import { normalizePagePath } from 'next/dist/shared/lib/page-path/normalize-page-path';
-import { isDynamicRoute } from 'next/dist/shared/lib/router/utils';
 import { normalizeAppPath } from 'next/dist/shared/lib/router/utils/app-paths';
 import getRouteFromAssetPath from 'next/dist/shared/lib/router/utils/get-route-from-asset-path';
 import { getPathMatch } from 'next/dist/shared/lib/router/utils/path-match';
@@ -52,7 +58,6 @@ import { removeTrailingSlash } from 'next/dist/shared/lib/router/utils/remove-tr
 import { Params} from 'next/dist/shared/lib/router/utils/route-matcher';
 import { PageNotFoundError } from 'next/dist/shared/lib/utils';
 import { NodeNextRequest, NodeNextResponse } from 'next/dist/server/base-http/node';
-import { isAPIRoute } from "next/dist/lib/is-api-route";
 
 import { toComputeResponse, toReqRes } from '@fastly/http-compute-js';
 
@@ -69,9 +74,9 @@ import { findDir } from './find-pages-dir';
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { ParsedUrlQuery } from 'querystring';
-import type { NextConfig } from 'next';
-import type RenderResult from 'next/dist/server/render-result';
+import type { MatchOptions } from 'next/dist/server/future/route-matcher-managers/route-matcher-manager';
 import type { NodeRequestHandler } from "next/dist/server/next-server";
+import type RenderResult from 'next/dist/server/render-result';
 
 export interface ComputeJsServerOptions extends Options {
   computeJsConfig: {
@@ -109,6 +114,32 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //   process.env.__NEXT_SCRIPT_WORKERS = JSON.stringify(true);
     // }
 
+    if (/*!options.dev &&*/ this.nextConfig.experimental.instrumentationHook) {
+      (async () => {
+        try {
+          console.log('instrumentationfile', join(
+            options.dir || '.',
+            options.conf.distDir!,
+            'server',
+            INSTRUMENTATION_HOOK_FILENAME
+          ));
+          const instrumentationHook = await requireModule(join(
+            options.dir || '.',
+            options.conf.distDir!,
+            'server',
+            INSTRUMENTATION_HOOK_FILENAME
+          ));
+
+          instrumentationHook.register?.();
+        } catch (err: any) {
+          if (err.code !== 'MODULE_NOT_FOUND') {
+            err.message = `An error occurred while loading instrumentation hook: ${err.message}`;
+            throw err;
+          }
+        }
+      })();
+    }
+
     // if (!options.dev) {
     //   // We are always in prod mode, so we should always be in here
     //
@@ -143,12 +174,52 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     Object.assign(this.renderOpts, options.computeJsConfig.extendRenderOpts);
   }
 
+  // TODO: Go implement this once async_hooks is available
+  // protected getRoutes() {
+  //   const routes = super.getRoutes()
+  //
+  //   if (this.hasAppDir) {
+  //     routes.handlers.set(RouteKind.APP_ROUTE, new AppRouteRouteHandler())
+  //   }
+  //
+  //   return routes
+  // }
+
   protected loadEnvConfig(): void {
     // NOTE: env config not loaded for Compute@Edge, here to fulfill abstract function
   }
 
-  protected getIncrementalCache() {
-    return {} as any;
+  protected getIncrementalCache({
+    requestHeaders,
+  }: {
+    requestHeaders: IncrementalCache['requestHeaders']
+  }) {
+    let CacheHandler: any
+    const {incrementalCacheHandlerPath} = this.nextConfig.experimental;
+
+    if (incrementalCacheHandlerPath) {
+      CacheHandler = requireModule(join(this.distDir, incrementalCacheHandlerPath));
+      CacheHandler = CacheHandler.default || CacheHandler;
+    }
+
+    // incremental-cache is request specific with a shared
+    // although can have shared caches in module scope
+    // per-cache handler
+    return new IncrementalCache({
+      dev: false,
+      requestHeaders,
+      appDir: this.hasAppDir,
+      minimalMode: this.minimalMode,
+      serverDistDir: this.serverDistDir,
+      fetchCache: this.nextConfig.experimental.appDir,
+      fetchCacheKeyPrefix: this.nextConfig.experimental.fetchCacheKeyPrefix,
+      maxMemoryCacheSize: this.nextConfig.experimental.isrMemoryCacheSize,
+      flushToDisk: false,
+      getPrerenderManifest: () => {
+        return this.getPrerenderManifest()
+      },
+      CurCacheHandler: CacheHandler,
+    });
   }
 
   protected getResponseCache() {
@@ -171,10 +242,9 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getAppPathsManifest(): PagesManifest | undefined {
-    if (this.hasAppDir) {
-      const appPathsManifestPath = join(this.serverDistDir, APP_PATHS_MANIFEST);
-      return requireManifest(appPathsManifestPath);
-    }
+    if (!this.hasAppDir) { return undefined; }
+    const appPathsManifestPath = join(this.serverDistDir, APP_PATHS_MANIFEST);
+    return requireManifest(appPathsManifestPath);
   }
 
   protected getFilesystemPaths(): Set<string> {
@@ -335,6 +405,18 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     query: NextParsedUrlQuery,
     renderOpts: RenderOpts
   ): Promise<RenderResult | null> {
+    return getTracer().trace(NextNodeServerSpan.renderHTML, async () =>
+      this.renderHTMLImpl(req, res, pathname, query, renderOpts)
+    );
+  }
+
+  private async renderHTMLImpl(
+    req: NodeNextRequest,
+    res: NodeNextResponse,
+    pathname: string,
+    query: NextParsedUrlQuery,
+    renderOpts: RenderOpts
+  ): Promise<RenderResult | null> {
 
     // Due to the way we pass data by mutating `renderOpts`, we can't extend the
     // object here but only updating its `serverComponentManifest` field.
@@ -366,7 +448,23 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     return getPagePath(pathname, this.distDir, locales, this.hasAppDir);
   }
 
-  protected async findPageComponents({
+    protected async findPageComponents({
+    pathname,
+    query,
+    params,
+    isAppPath,
+  }: {
+    pathname: string
+    query: NextParsedUrlQuery
+    params: Params | null
+    isAppPath: boolean
+  }): Promise<FindComponentsResult | null> {
+    return getTracer().trace(NextNodeServerSpan.findPageComponents, () =>
+      this.findPageComponentsImpl({ pathname, query, params, isAppPath })
+    )
+  }
+
+  protected async findPageComponentsImpl({
     pathname,
     query,
     params,
@@ -447,7 +545,11 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   protected getServerComponentManifest() {
     // TODO: If we want to support Server Components
     if (!this.hasAppDir) return undefined;
-    return requireManifest(join(this.distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json'));
+    return requireManifest(join(
+      this.distDir,
+      'server',
+      CLIENT_REFERENCE_MANIFEST + '.json'
+    ));
   }
 
   protected getServerCSSManifest() {
@@ -461,7 +563,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getFontLoaderManifest() {
-    if (!this.nextConfig.experimental.fontLoaders) return undefined
     return requireManifest(join(this.distDir, 'server', `${FONT_LOADER_MANIFEST}.json`))
   }
 
@@ -472,22 +573,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
   // NOTE: This is the same as the generateRoutes() method of WebServer,
   // because it handles things as we need in minimal mode.
-  protected generateRoutes(): {
-    headers: Route[]
-    rewrites: {
-      beforeFiles: Route[]
-      afterFiles: Route[]
-      fallback: Route[]
-    }
-    fsRoutes: Route[]
-    redirects: Route[]
-    catchAllRoute: Route
-    catchAllMiddleware: Route[]
-    pageChecker: PageChecker
-    useFileSystemPublicRoutes: boolean
-    dynamicRoutes: DynamicRoutes | undefined
-    nextConfig: NextConfig
-  } {
+  protected generateRoutes(): RouterOptions {
     const fsRoutes: Route[] = [
       {
         match: getPathMatch('/_next/data/:path*'),
@@ -607,27 +693,38 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         // next.js core assumes page path without trailing slash
         pathname = removeTrailingSlash(pathname);
 
-        if (this.nextConfig.i18n) {
-          const localePathResult = normalizeLocalePath(
-            pathname,
-            this.nextConfig.i18n?.locales
-          );
-
-          if (localePathResult.detectedLocale) {
-            pathname = localePathResult.pathname;
-            parsedUrl.query.__nextLocale = localePathResult.detectedLocale;
-          }
+        const options: MatchOptions = {
+          i18n: this.localeNormalizer?.match(pathname),
         }
+        if (options.i18n?.detectedLocale) {
+          parsedUrl.query.__nextLocale = options.i18n.detectedLocale
+        }
+
         const bubbleNoFallback = !!query._nextBubbleNoFallback;
+        const match = await this.matchers.match(pathname, options)
 
-        if (isAPIRoute(pathname)) {
-          delete query._nextBubbleNoFallback;
+        if (match) {
+          addRequestMeta(req, '_nextMatch', match)
+        }
 
-          // NOTE (Fastly): Unlike the WebServer implementation from
-          // "next", we have to handle this API request here.
-          const handled = await this.handleApiRequest(req, res, pathname, query);
-          if (handled) {
-            return {finished: true};
+        // Try to handle the given route with the configured handlers.
+        if (match) {
+          let handled = false
+
+          // If the route was detected as being a Pages API route, then handle
+          // it.
+          // TODO: move this behavior into a route handler.
+          if (match.definition.kind === RouteKind.PAGES_API) {
+            delete query._nextBubbleNoFallback
+
+            handled = await this.handleApiRequest(
+              req,
+              res,
+              query,
+              // TODO: see if we can add a runtime check for this
+              match as PagesAPIRouteMatch
+            )
+            if (handled) return { finished: true }
           }
         }
 
@@ -652,7 +749,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
     if (useFileSystemPublicRoutes) {
       this.appPathRoutes = this.getAppPathRoutes();
-      this.dynamicRoutes = this.getDynamicRoutes();
     }
 
     return {
@@ -667,9 +763,9 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       catchAllRoute,
       catchAllMiddleware: [],
       useFileSystemPublicRoutes,
-      dynamicRoutes: this.dynamicRoutes,
-      pageChecker: this.hasPage.bind(this),
+      matchers: this.matchers,
       nextConfig: this.nextConfig,
+      localeNormalizer: this.localeNormalizer,
     };
   }
 
@@ -677,45 +773,21 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
    * Resolves `API` request
    * @param req http request
    * @param res http response
-   * @param pathname path of request
    * @param query
+   * @param match
    */
   protected async handleApiRequest(
     req: BaseNextRequest,
     res: BaseNextResponse,
-    pathname: string,
-    query: ParsedUrlQuery
+    query: ParsedUrlQuery,
+    match: PagesAPIRouteMatch
   ): Promise<boolean> {
-    let page = pathname;
-    let params: Params | undefined = undefined;
-    let pageFound = !isDynamicRoute(page) && (await this.hasPage(page));
+    const {
+      definition: { pathname, filename },
+      params,
+    } = match
 
-    if (!pageFound && this.dynamicRoutes) {
-      for (const dynamicRoute of this.dynamicRoutes) {
-        params = dynamicRoute.match(pathname) || undefined;
-        if (isAPIRoute(dynamicRoute.page) && params) {
-          page = dynamicRoute.page;
-          pageFound = true;
-          break;
-        }
-      }
-    }
-
-    if (!pageFound) {
-      return false;
-    }
-
-    let builtPagePath
-    try {
-      builtPagePath = this.getPagePath(page);
-    } catch (err) {
-      if (isError(err) && err.code === 'ENOENT') {
-        return false;
-      }
-      throw err
-    }
-
-    return this.runApi(req, res, query, params, page, builtPagePath);
+    return this.runApi(req, res, query, params, pathname, filename);
   }
 
   private _cachedPreviewManifest: PrerenderManifest | undefined
@@ -741,12 +813,14 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     const initUrl =
       this.hostname && this.port
         ? `${protocol}://${this.hostname}:${this.port}${req.url}`
+        : (this.nextConfig.experimental as any).trustHostHeader
+        ? `https://${req.headers.host || 'localhost'}${req.url}`
         : req.url;
 
     addRequestMeta(req, '__NEXT_INIT_URL', initUrl);
     addRequestMeta(req, '__NEXT_INIT_QUERY', {...parsedUrl.query});
     addRequestMeta(req, '_protocol', protocol);
-    addRequestMeta(req, '__NEXT_CLONABLE_BODY', getClonableBody(req.body));
+    addRequestMeta(req, '__NEXT_CLONABLE_BODY', getCloneableBody(req.body));
   }
 
   protected get serverDistDir() {
