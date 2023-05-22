@@ -118,12 +118,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     if (/*!options.dev &&*/ this.nextConfig.experimental.instrumentationHook) {
       (async () => {
         try {
-          console.log('instrumentationfile', join(
-            options.dir || '.',
-            options.conf.distDir!,
-            'server',
-            INSTRUMENTATION_HOOK_FILENAME
-          ));
           const instrumentationHook = await requireModule(join(
             options.dir || '.',
             options.conf.distDir!,
