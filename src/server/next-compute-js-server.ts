@@ -5,7 +5,7 @@
  * Portions of this file Copyright Vercel, Inc., licensed under the MIT license. See LICENSE file for details.
  */
 
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { env } from "fastly:env";
 
 import {
@@ -144,31 +144,23 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //   process.env.__NEXT_SCRIPT_WORKERS = JSON.stringify(true);
     // }
 
-    // if (!options.dev) {
-    //   // We are always in prod mode, so we should always be in here
-    //
-    //   // pre-warm _document and _app as these will be
-    //   // needed for most requests
-    //   loadComponents({
-    //     distDir: this.distDir,
-    //     pathname: '/_document',
-    //     hasServerComponents: false,
-    //     isAppPath: false,
-    //   }).catch(
-    //     () => {
-    //     }
-    //   );
-    //
-    //   loadComponents(
-    //     distDir: this.distDir,
-    //     pathname: '/_app',
-    //     hasServerComponents: false,
-    //     isAppPath: false,
-    //   ).catch(
-    //     () => {
-    //     }
-    //   );
-    // }
+    if (/* !options.dev && */ !this.nextConfig.experimental.appDocumentPreloading) {
+      // pre-warm _document and _app as these will be
+      // needed for most requests
+      loadComponents({
+        distDir: this.distDir,
+        pathname: '/_document',
+        hasServerComponents: false,
+        isAppPath: false,
+      }).catch(() => {});
+
+      loadComponents({
+        distDir: this.distDir,
+        pathname: '/_app',
+        hasServerComponents: false,
+        isAppPath: false,
+      }).catch(() => {});
+    }
 
     // if (this.isRouterWorker) {
     //   this.renderWorkers = {}
@@ -253,7 +245,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       this.nextConfig.experimental.instrumentationHook
     ) {
       try {
-        const instrumentationHook = await requireModule(join(
+        const instrumentationHook = await requireModule(resolve(
           this.serverOptions.dir || '.',
           this.serverOptions.conf.distDir!,
           'server',
@@ -276,8 +268,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
   protected getIncrementalCache({
     requestHeaders,
+    requestProtocol,
   }: {
-    requestHeaders: IncrementalCache['requestHeaders']
+    requestHeaders: IncrementalCache['requestHeaders'],
+    requestProtocol: 'http' | 'https',
   }) {
     let CacheHandler: any
     const {incrementalCacheHandlerPath} = this.nextConfig.experimental;
@@ -293,7 +287,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     return new IncrementalCache({
       dev: false,
       requestHeaders,
+      requestProtocol,
       appDir: this.hasAppDir,
+      allowedRevalidateHeaderKeys:
+        this.nextConfig.experimental.allowedRevalidateHeaderKeys,
       minimalMode: this.minimalMode,
       serverDistDir: this.serverDistDir,
       fetchCache: this.nextConfig.experimental.appDir,
@@ -901,6 +898,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         //     const invokeHeaders: typeof req.headers = {
         //       'cache-control': '',
         //       ...req.headers,
+        //       'x-middleware-invoke': '',
         //       'x-invoke-path': invokePathname,
         //       'x-invoke-query': encodeURIComponent(invokeQuery),
         //     }
