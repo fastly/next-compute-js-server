@@ -16,7 +16,12 @@ import {
 import { interopDefault } from 'next/dist/lib/interop-default';
 import { requireManifest, requirePage } from './require';
 
-import type { LoadComponentsReturnType } from 'next/dist/server/load-components';
+import type { BuildManifest } from 'next/dist/server/get-page-files';
+import type { LoadComponentsReturnType, ReactLoadableManifest } from 'next/dist/server/load-components';
+
+async function loadManifest<T>(manifestPath: string, _ = 1): Promise<T> {
+  return requireManifest(manifestPath) as T;
+}
 
 /**
  * Loads React component associated with a given pathname.
@@ -52,10 +57,10 @@ export async function loadComponents({
 
   const [buildManifest, reactLoadableManifest, serverComponentManifest] =
     await Promise.all([
-      requireManifest(join(distDir, BUILD_MANIFEST)),
-      requireManifest(join(distDir, REACT_LOADABLE_MANIFEST)),
+      loadManifest<BuildManifest>(join(distDir, BUILD_MANIFEST)),
+      loadManifest<ReactLoadableManifest>(join(distDir, REACT_LOADABLE_MANIFEST)),
       hasServerComponents ?
-        requireManifest(join(distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json')) :
+        loadManifest(join(distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json')) :
         null,
     ]);
 
