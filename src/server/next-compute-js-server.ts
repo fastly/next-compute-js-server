@@ -41,7 +41,6 @@ import { IncrementalCache } from 'next/dist/server/lib/incremental-cache'
 import { NextNodeServerSpan } from 'next/dist/server/lib/trace/constants';
 import { getTracer } from 'next/dist/server/lib/trace/tracer';
 import { RenderOpts, renderToHTML } from 'next/dist/server/render';
-import { renderToHTMLOrFlight as appRenderToHTMLOrFlight } from 'next/dist/server/app-render/app-render';
 import {
   addRequestMeta,
   getRequestMeta,
@@ -230,10 +229,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //   }
     // }
 
-    // // expose AsyncLocalStorage on global for react usage
-    // const { AsyncLocalStorage } = require('async_hooks')
-    // ;(global as any).AsyncLocalStorage = AsyncLocalStorage
-
     // Extend `renderOpts`.
     Object.assign(this.renderOpts, options.computeJsConfig.extendRenderOpts);
   }
@@ -252,7 +247,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
           INSTRUMENTATION_HOOK_FILENAME
         ));
 
-        instrumentationHook.register?.();
+        await instrumentationHook.register?.();
       } catch (err: any) {
         if (err.code !== 'MODULE_NOT_FOUND') {
           err.message = `An error occurred while loading instrumentation hook: ${err.message}`;
@@ -512,6 +507,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     renderOpts.nextFontManifest = this.nextFontManifest
 
     if (this.hasAppDir && renderOpts.isAppPath) {
+      const { renderToHTMLOrFlight: appRenderToHTMLOrFlight } = await import('next/dist/server/app-render/app-render');
       return appRenderToHTMLOrFlight(
         req.originalRequest,
         res.originalResponse,
@@ -833,17 +829,39 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
         // if (this.isRouterWorker) {
         //   let page = pathname
+        //   let matchedExistingRoute = false
         //
         //   if (!(await this.hasPage(page))) {
         //     for (const route of this.dynamicRoutes || []) {
         //       if (route.match(pathname)) {
         //         page = route.page
+        //         matchedExistingRoute = true
         //         break
         //       }
         //     }
+        //   } else {
+        //     matchedExistingRoute = true
         //   }
         //
-        //   const renderKind = this.appPathRoutes?.[page] ? 'app' : 'pages'
+        //   let renderKind: 'app' | 'pages' =
+        //     this.appPathRoutes?.[page] ||
+        //     // Possible that it's a dynamic app route or behind routing rules
+        //     // such as i18n. In that case, we need to check the route kind directly.
+        //     match?.definition.kind === RouteKind.APP_PAGE
+        //       ? 'app'
+        //       : 'pages'
+        //
+        //   // Handle app dir's /not-found feature: for 404 pages, they should be
+        //   // routed to the app renderer.
+        //   if (!matchedExistingRoute && this.appPathRoutes) {
+        //     if (
+        //       this.appPathRoutes[
+        //         this.renderOpts.dev ? '/not-found' : '/_not-found'
+        //       ]
+        //     ) {
+        //       renderKind = 'app'
+        //     }
+        //   }
         //
         //   if (this.renderWorkersPromises) {
         //     await this.renderWorkersPromises
