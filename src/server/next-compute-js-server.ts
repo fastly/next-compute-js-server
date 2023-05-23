@@ -5,7 +5,7 @@
  * Portions of this file Copyright Vercel, Inc., licensed under the MIT license. See LICENSE file for details.
  */
 
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { env } from "fastly:env";
 
 import {
@@ -71,6 +71,7 @@ import {
 import { loadComponents } from './load-components';
 import ComputeJsResponseCache from './response-cache/compute-js';
 import { findDir } from './find-pages-dir';
+import { resolve } from './fs';
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { ParsedUrlQuery } from 'querystring';
