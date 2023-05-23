@@ -19,6 +19,7 @@ import { requireManifest, requirePage } from './require';
 import { getTracer } from 'next/dist/server/lib/trace/tracer';
 import { LoadComponentsSpan } from 'next/dist/server/lib/trace/constants';
 
+import type { ClientReferenceManifest } from 'next/dist/build/webpack/plugins/flight-manifest-plugin';
 import type { BuildManifest } from 'next/dist/server/get-page-files';
 import type { LoadComponentsReturnType, ReactLoadableManifest } from 'next/dist/server/load-components';
 
@@ -61,17 +62,17 @@ export async function loadComponentsImpl({
   const [
     buildManifest,
     reactLoadableManifest,
-    serverComponentManifest,
+    clientReferenceManifest,
     serverActionsManifest,
   ] =
     await Promise.all([
       loadManifest<BuildManifest>(join(distDir, BUILD_MANIFEST)),
       loadManifest<ReactLoadableManifest>(join(distDir, REACT_LOADABLE_MANIFEST)),
       hasServerComponents ?
-        loadManifest(
+        loadManifest<ClientReferenceManifest>(
           join(distDir, SERVER_DIRECTORY, CLIENT_REFERENCE_MANIFEST + '.json')
         ) :
-        null,
+        undefined,
       hasServerComponents ?
         loadManifest(
           join(distDir, SERVER_DIRECTORY, SERVER_REFERENCE_MANIFEST + '.json')
@@ -97,7 +98,7 @@ export async function loadComponentsImpl({
     getServerSideProps,
     getStaticProps,
     getStaticPaths,
-    serverComponentManifest,
+    clientReferenceManifest,
     serverActionsManifest,
     isAppPath,
     pathname,

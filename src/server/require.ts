@@ -27,6 +27,10 @@ const pagePathCache = new LRUCache<string, string | null>({
   max: 1000,
 });
 
+const loadManifest = (manifestPath: string) => {
+  return requireManifest(manifestPath)
+}
+
 export function getMaybePagePath(
   page: string,
   distDir: string,
@@ -43,13 +47,12 @@ export function getMaybePagePath(
   let appPathsManifest: undefined | PagesManifest;
 
   if (isAppPath) {
-    appPathsManifest = requireManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
+    appPathsManifest = loadManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
   }
 
-  const pagesManifest = requireManifest(join(
-    serverBuildPath,
-    PAGES_MANIFEST
-  )) as PagesManifest;
+  const pagesManifest = loadManifest(
+    join(serverBuildPath, PAGES_MANIFEST)
+  ) as PagesManifest;
 
   try {
     page = denormalizePagePath(normalizePagePath(page));

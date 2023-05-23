@@ -16,6 +16,7 @@ import {
   NEXT_FONT_MANIFEST,
   PAGES_MANIFEST,
   PRERENDER_MANIFEST,
+  ROUTES_MANIFEST,
   SERVER_DIRECTORY,
 } from 'next/constants';
 import {
@@ -40,7 +41,7 @@ import { IncrementalCache } from 'next/dist/server/lib/incremental-cache'
 import { NextNodeServerSpan } from 'next/dist/server/lib/trace/constants';
 import { getTracer } from 'next/dist/server/lib/trace/tracer';
 import { RenderOpts, renderToHTML } from 'next/dist/server/render';
-import { renderToHTMLOrFlight as appRenderToHTMLOrFlight } from 'next/dist/server/app-render';
+import { renderToHTMLOrFlight as appRenderToHTMLOrFlight } from 'next/dist/server/app-render/app-render';
 import {
   addRequestMeta,
   getRequestMeta,
@@ -49,14 +50,13 @@ import {
 } from 'next/dist/server/request-meta';
 import { Route, RouterOptions } from 'next/dist/server/router';
 import { PayloadOptions, sendRenderResult } from 'next/dist/server/send-payload';
-import { detectDomainLocale } from 'next/dist/shared/lib/i18n/detect-domain-locale';
-import { normalizeLocalePath } from 'next/dist/shared/lib/i18n/normalize-locale-path';
 import { normalizePagePath } from 'next/dist/shared/lib/page-path/normalize-page-path';
 import { normalizeAppPath } from 'next/dist/shared/lib/router/utils/app-paths';
 import getRouteFromAssetPath from 'next/dist/shared/lib/router/utils/get-route-from-asset-path';
 import { getPathMatch } from 'next/dist/shared/lib/router/utils/path-match';
+import { getRouteRegex } from "next/dist/shared/lib/router/utils/route-regex";
 import { removeTrailingSlash } from 'next/dist/shared/lib/router/utils/remove-trailing-slash';
-import { Params} from 'next/dist/shared/lib/router/utils/route-matcher';
+import { getRouteMatcher, Params } from 'next/dist/shared/lib/router/utils/route-matcher';
 import { PageNotFoundError } from 'next/dist/shared/lib/utils';
 import { NodeNextRequest, NodeNextResponse } from 'next/dist/server/base-http/node';
 
@@ -87,12 +87,41 @@ export interface ComputeJsServerOptions extends Options {
 
 export type ComputeJsRequestHandler = (request: Request) => Promise<Response>;
 
+// type RenderWorker = Worker & {
+//   initialize: typeof import('./lib/render-server').initialize
+//   deleteCache: typeof import('./lib/render-server').deleteCache
+//   deleteAppClientCache: typeof import('./lib/render-server').deleteAppClientCache
+//   clearModuleContext: typeof import('./lib/render-server').clearModuleContext
+// }
+
 /**
  * An implementation of a Next.js server that has been adapted to run in Compute@Edge.
  * (An adaptation for Compute@Edge of NextNodeServer in Next.js,
  * found at next/server/next-server.ts)
  */
 export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptions> {
+
+  // protected renderWorkersPromises?: Promise<void>
+  // protected renderWorkers?: {
+  //   middleware?: RenderWorker
+  //   pages?: RenderWorker
+  //   app?: RenderWorker
+  // }
+  // protected renderWorkerOpts?: Parameters<
+  //   typeof import('./lib/render-server').initialize
+  // >[0]
+  // protected dynamicRoutes?: {
+  //   match: import('../shared/lib/router/utils/route-matcher').RouteMatchFn
+  //   page: string
+  //   re: RegExp
+  // }[]
+
+  protected dynamicRoutes?: {
+    match: import('next/dist/shared/lib/router/utils/route-matcher').RouteMatchFn,
+    page: string,
+    re: RegExp,
+  }[];
+
   constructor(options: ComputeJsServerOptions) {
     super(options);
 
@@ -100,7 +129,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
     /**
      * This sets environment variable to be used at the time of SSR by head.tsx.
-     * Using this from process.env allows targeting both serverless and SSR by calling
+     * Using this from process.env allows targeting SSR by calling
      * `process.env.__NEXT_OPTIMIZE_CSS`.
      */
     // if (this.renderOpts.optimizeFonts) {
@@ -114,26 +143,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     // if (this.renderOpts.nextScriptWorkers) {
     //   process.env.__NEXT_SCRIPT_WORKERS = JSON.stringify(true);
     // }
-
-    if (/*!options.dev &&*/ this.nextConfig.experimental.instrumentationHook) {
-      (async () => {
-        try {
-          const instrumentationHook = await requireModule(join(
-            options.dir || '.',
-            options.conf.distDir!,
-            'server',
-            INSTRUMENTATION_HOOK_FILENAME
-          ));
-
-          instrumentationHook.register?.();
-        } catch (err: any) {
-          if (err.code !== 'MODULE_NOT_FOUND') {
-            err.message = `An error occurred while loading instrumentation hook: ${err.message}`;
-            throw err;
-          }
-        }
-      })();
-    }
 
     // if (!options.dev) {
     //   // We are always in prod mode, so we should always be in here
@@ -161,6 +170,74 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //   );
     // }
 
+    // if (this.isRouterWorker) {
+    //   this.renderWorkers = {}
+    //   this.renderWorkerOpts = {
+    //     port: this.port || 0,
+    //     dir: this.dir,
+    //     workerType: 'render',
+    //     hostname: this.hostname,
+    //     dev: !!options.dev,
+    //   }
+    //   const { createWorker, createIpcServer } =
+    //     require('./lib/server-ipc') as typeof import('./lib/server-ipc')
+    //   this.renderWorkersPromises = new Promise<void>(async (resolveWorkers) => {
+    //     try {
+    //       this.renderWorkers = {}
+    //       const { ipcPort } = await createIpcServer(this)
+    //       if (this.hasAppDir) {
+    //         this.renderWorkers.app = createWorker(
+    //           this.port || 0,
+    //           ipcPort,
+    //           options.isNodeDebugging,
+    //           'app'
+    //         )
+    //       }
+    //       this.renderWorkers.pages = createWorker(
+    //         this.port || 0,
+    //         ipcPort,
+    //         options.isNodeDebugging,
+    //         'pages'
+    //       )
+    //       this.renderWorkers.middleware =
+    //         this.renderWorkers.pages || this.renderWorkers.app
+    //
+    //       resolveWorkers()
+    //     } catch (err) {
+    //       Log.error(`Invariant failed to initialize render workers`)
+    //       console.error(err)
+    //       process.exit(1)
+    //     }
+    //   })
+    //   ;(global as any)._nextDeleteCache = (filePath: string) => {
+    //     try {
+    //       this.renderWorkers?.pages?.deleteCache(filePath)
+    //       this.renderWorkers?.app?.deleteCache(filePath)
+    //     } catch (err) {
+    //       console.error(err)
+    //     }
+    //   }
+    //   ;(global as any)._nextDeleteAppClientCache = () => {
+    //     try {
+    //       this.renderWorkers?.pages?.deleteAppClientCache()
+    //       this.renderWorkers?.app?.deleteAppClientCache()
+    //     } catch (err) {
+    //       console.error(err)
+    //     }
+    //   }
+    //   ;(global as any)._nextClearModuleContext = (
+    //     targetPath: any,
+    //     content: any
+    //   ) => {
+    //     try {
+    //       this.renderWorkers?.pages?.clearModuleContext(targetPath, content)
+    //       this.renderWorkers?.app?.clearModuleContext(targetPath, content)
+    //     } catch (err) {
+    //       console.error(err)
+    //     }
+    //   }
+    // }
+
     // // expose AsyncLocalStorage on global for react usage
     // const { AsyncLocalStorage } = require('async_hooks')
     // ;(global as any).AsyncLocalStorage = AsyncLocalStorage
@@ -169,16 +246,29 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     Object.assign(this.renderOpts, options.computeJsConfig.extendRenderOpts);
   }
 
-  // TODO: Go implement this once async_hooks is available
-  // protected getRoutes() {
-  //   const routes = super.getRoutes()
-  //
-  //   if (this.hasAppDir) {
-  //     routes.handlers.set(RouteKind.APP_ROUTE, new AppRouteRouteHandler())
-  //   }
-  //
-  //   return routes
-  // }
+  protected async prepareImpl() {
+    await super.prepareImpl();
+    if (
+      /* !this.serverOptions.dev && */
+      this.nextConfig.experimental.instrumentationHook
+    ) {
+      try {
+        const instrumentationHook = await requireModule(join(
+          this.serverOptions.dir || '.',
+          this.serverOptions.conf.distDir!,
+          'server',
+          INSTRUMENTATION_HOOK_FILENAME
+        ));
+
+        instrumentationHook.register?.();
+      } catch (err: any) {
+        if (err.code !== 'MODULE_NOT_FOUND') {
+          err.message = `An error occurred while loading instrumentation hook: ${err.message}`;
+          throw err;
+        }
+      }
+    }
+  }
 
   protected loadEnvConfig(): void {
     // NOTE: env config not loaded for Compute@Edge, here to fulfill abstract function
@@ -316,6 +406,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
     delete query.__nextLocale
     delete query.__nextDefaultLocale
+    delete query.__nextInferredLocaleFromDefault
 
     await apiResolver(
       (req as NodeNextRequest).originalRequest,
@@ -356,6 +447,9 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   public getRequestHandler(): NodeRequestHandler {
+    // This is just optimization to fire prepare as soon as possible
+    // It will be properly awaited later
+    void this.prepare();
     const handler = super.getRequestHandler();
     return async (req, res, parsedUrl) => {
       return handler(
@@ -399,7 +493,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     pathname: string,
     query: NextParsedUrlQuery,
     renderOpts: RenderOpts
-  ): Promise<RenderResult | null> {
+  ): Promise<RenderResult> {
     return getTracer().trace(NextNodeServerSpan.renderHTML, async () =>
       this.renderHTMLImpl(req, res, pathname, query, renderOpts)
     );
@@ -411,12 +505,12 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     pathname: string,
     query: NextParsedUrlQuery,
     renderOpts: RenderOpts
-  ): Promise<RenderResult | null> {
+  ): Promise<RenderResult> {
 
     // Due to the way we pass data by mutating `renderOpts`, we can't extend the
-    // object here but only updating its `serverComponentManifest` field.
+    // object here but only updating its `clientReferenceManifest` field.
     // https://github.com/vercel/next.js/blob/df7cbd904c3bd85f399d1ce90680c0ecf92d2752/packages/next/server/render.tsx#L947-L952
-    renderOpts.serverComponentManifest = this.serverComponentManifest
+    renderOpts.clientReferenceManifest = this.clientReferenceManifest;
     renderOpts.serverCSSManifest = this.serverCSSManifest
     renderOpts.nextFontManifest = this.nextFontManifest
 
@@ -454,8 +548,21 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     params: Params | null
     isAppPath: boolean
   }): Promise<FindComponentsResult | null> {
-    return getTracer().trace(NextNodeServerSpan.findPageComponents, () =>
-      this.findPageComponentsImpl({ pathname, query, params, isAppPath })
+      let route = pathname;
+      if (isAppPath) {
+        // When in App we get page instead of route
+        route = pathname.replace(/\/[^/]*$/, '');
+      }
+
+    return getTracer().trace(
+      NextNodeServerSpan.findPageComponents,
+      {
+        spanName: `resolving page into components`,
+        attributes: {
+          'next.route': route,
+        },
+      },
+      () => this.findPageComponentsImpl({ pathname, query, params, isAppPath })
     )
   }
 
@@ -569,6 +676,27 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   // NOTE: This is the same as the generateRoutes() method of WebServer,
   // because it handles things as we need in minimal mode.
   protected generateRoutes(): RouterOptions {
+    // if (!dev) {
+      const routesManifest = this.getRoutesManifest() as {
+        dynamicRoutes: {
+          page: string,
+          regex: string,
+          namedRegex?: string,
+          routeKeys?: { [key: string]: string },
+        }[];
+      }
+      this.dynamicRoutes = routesManifest.dynamicRoutes.map((r) => {
+        const regex = getRouteRegex(r.page);
+        const match = getRouteMatcher(regex);
+
+        return {
+          match,
+          page: r.page,
+          regex: regex.re,
+        };
+      }) as any;
+    // }
+
     const fsRoutes: Route[] = [
       {
         match: getPathMatch('/_next/data/:path*'),
@@ -610,7 +738,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
           pathname = getRouteFromAssetPath(pathname, '.json');
 
           // ensure trailing slash is normalized per config
-          if (this.router.catchAllMiddleware[0]) {
+          if (this.router.hasMiddleware) {
             if (this.nextConfig.trailingSlash && !pathname.endsWith('/')) {
               pathname += '/';
             }
@@ -623,31 +751,41 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
             }
           }
 
-          if (this.nextConfig.i18n) {
-            const { host } = req?.headers || {};
-            // remove port from host and remove port if present
-            const hostname = host?.split(':')[0].toLowerCase();
-            const localePathResult = normalizeLocalePath(
-              pathname,
-              this.nextConfig.i18n.locales
-            );
-            const { defaultLocale } =
-              detectDomainLocale(this.nextConfig.i18n.domains, hostname) || {};
+          if (this.i18nProvider) {
+            // Remove the port from the hostname if present.
+            const hostname = req?.headers.host?.split(':')[0].toLowerCase();
 
-            let detectedLocale = '';
+            const domainLocale = this.i18nProvider.detectDomainLocale(hostname);
+            const defaultLocale =
+              domainLocale?.defaultLocale ??
+              this.i18nProvider.config.defaultLocale;
 
+            const localePathResult = this.i18nProvider.analyze(pathname);
+
+            // If the locale is detected from the path, we need to remove it
+            // from the pathname.
             if (localePathResult.detectedLocale) {
               pathname = localePathResult.pathname;
-              detectedLocale = localePathResult.detectedLocale;
             }
 
-            _parsedUrl.query.__nextLocale = detectedLocale;
-            _parsedUrl.query.__nextDefaultLocale =
-              defaultLocale || this.nextConfig.i18n.defaultLocale;
+            // Update the query with the detected locale and default locale.
+            _parsedUrl.query.__nextLocale = localePathResult.detectedLocale;
+            _parsedUrl.query.__nextDefaultLocale = defaultLocale;
 
-            if (!detectedLocale && !this.router.catchAllMiddleware[0]) {
-              _parsedUrl.query.__nextLocale =
-                _parsedUrl.query.__nextDefaultLocale;
+            // If the locale is not detected from the path, we need to mark that
+            // it was not inferred from default.
+            if (!_parsedUrl.query.__nextLocale) {
+              delete _parsedUrl.query.__nextInferredLocaleFromDefault;
+            }
+
+            // If no locale was detected and we don't have middleware, we need
+            // to render a 404 page.
+            // NOTE: (wyattjoh) we may need to change this for app/
+            if (
+              !localePathResult.detectedLocale &&
+              !this.router.hasMiddleware
+            ) {
+              _parsedUrl.query.__nextLocale = defaultLocale;
               await this.render404(req, res, _parsedUrl);
               return {finished: true};
             }
@@ -685,25 +823,155 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
           throw new Error('pathname is undefined');
         }
 
+        const bubbleNoFallback = Boolean(query._nextBubbleNoFallback);
+
         // next.js core assumes page path without trailing slash
         pathname = removeTrailingSlash(pathname);
 
         const options: MatchOptions = {
-          i18n: this.localeNormalizer?.match(pathname),
-        }
-        if (options.i18n?.detectedLocale) {
-          parsedUrl.query.__nextLocale = options.i18n.detectedLocale
-        }
+          i18n: this.i18nProvider?.fromQuery(pathname, query),
+        };
 
-        const bubbleNoFallback = !!query._nextBubbleNoFallback;
-        const match = await this.matchers.match(pathname, options)
+        const match = await this.matchers.match(pathname, options);
 
+        // if (this.isRouterWorker) {
+        //   let page = pathname
+        //
+        //   if (!(await this.hasPage(page))) {
+        //     for (const route of this.dynamicRoutes || []) {
+        //       if (route.match(pathname)) {
+        //         page = route.page
+        //         break
+        //       }
+        //     }
+        //   }
+        //
+        //   const renderKind = this.appPathRoutes?.[page] ? 'app' : 'pages'
+        //
+        //   if (this.renderWorkersPromises) {
+        //     await this.renderWorkersPromises
+        //     this.renderWorkersPromises = undefined
+        //   }
+        //   const renderWorker = this.renderWorkers?.[renderKind]
+        //
+        //   if (renderWorker) {
+        //     const initUrl = getRequestMeta(req, '__NEXT_INIT_URL')!
+        //     const { port, hostname } = await renderWorker.initialize(
+        //       this.renderWorkerOpts!
+        //     )
+        //     const renderUrl = new URL(initUrl)
+        //     renderUrl.hostname = hostname
+        //     renderUrl.port = port + ''
+        //
+        //     let invokePathname = pathname
+        //     const normalizedInvokePathname =
+        //       this.localeNormalizer?.normalize(pathname)
+        //
+        //     if (normalizedInvokePathname?.startsWith('/api')) {
+        //       invokePathname = normalizedInvokePathname
+        //     } else if (
+        //       query.__nextLocale &&
+        //       !pathHasPrefix(invokePathname, `/${query.__nextLocale}`)
+        //     ) {
+        //       invokePathname = `/${query.__nextLocale}${
+        //         invokePathname === '/' ? '' : invokePathname
+        //       }`
+        //     }
+        //
+        //     if (query.__nextDataReq) {
+        //       invokePathname = `/_next/data/${this.buildId}${invokePathname}.json`
+        //     }
+        //     invokePathname = addPathPrefix(
+        //       invokePathname,
+        //       this.nextConfig.basePath
+        //     )
+        //     const keptQuery: ParsedUrlQuery = {}
+        //
+        //     for (const key of Object.keys(query)) {
+        //       if (key.startsWith('__next') || key.startsWith('_next')) {
+        //         continue
+        //       }
+        //       keptQuery[key] = query[key]
+        //     }
+        //     if (query._nextBubbleNoFallback) {
+        //       keptQuery._nextBubbleNoFallback = '1'
+        //     }
+        //     const invokeQuery = JSON.stringify(keptQuery)
+        //
+        //     const invokeHeaders: typeof req.headers = {
+        //       'cache-control': '',
+        //       ...req.headers,
+        //       'x-invoke-path': invokePathname,
+        //       'x-invoke-query': encodeURIComponent(invokeQuery),
+        //     }
+        //
+        //     const invokeRes = await invokeRequest(
+        //       renderUrl.toString(),
+        //       {
+        //         headers: invokeHeaders,
+        //         method: req.method,
+        //       },
+        //       getRequestMeta(req, '__NEXT_CLONABLE_BODY')?.cloneBodyStream()
+        //     )
+        //     const noFallback = invokeRes.headers['x-no-fallback']
+        //
+        //     if (noFallback) {
+        //       if (bubbleNoFallback) {
+        //         return { finished: false }
+        //       } else {
+        //         await this.render404(req, res, parsedUrl)
+        //         return {
+        //           finished: true,
+        //         }
+        //       }
+        //     }
+        //
+        //     for (const [key, value] of Object.entries(
+        //       filterReqHeaders({ ...invokeRes.headers })
+        //     )) {
+        //       if (value !== undefined) {
+        //         if (key === 'set-cookie') {
+        //           const curValue = res.getHeader(key)
+        //           const newValue: string[] = [] as string[]
+        //           for (const cookie of splitCookiesString(curValue || '')) {
+        //             newValue.push(cookie)
+        //           }
+        //           for (const val of (Array.isArray(value)
+        //             ? value
+        //             : value
+        //               ? [value]
+        //               : []) as string[]) {
+        //             newValue.push(val)
+        //           }
+        //           res.setHeader(key, newValue)
+        //         } else {
+        //           res.setHeader(key, value as string)
+        //         }
+        //       }
+        //     }
+        //     res.statusCode = invokeRes.statusCode
+        //     res.statusMessage = invokeRes.statusMessage
+        //
+        //     for await (const chunk of invokeRes) {
+        //       this.streamResponseChunk(res as NodeNextResponse, chunk)
+        //     }
+        //     ;(res as NodeNextResponse).originalResponse.end()
+        //     return {
+        //       finished: true,
+        //     }
+        //   }
+        // }
+        //
         if (match) {
           addRequestMeta(req, '_nextMatch', match)
         }
 
         // Try to handle the given route with the configured handlers.
         if (match) {
+          // Add the match to the request so we don't have to re-run the matcher
+          // for the same request.
+          addRequestMeta(req, '_nextMatch', match);
+
           let handled = false
 
           // If the route was detected as being a Pages API route, then handle
@@ -739,6 +1007,14 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
           };
         } catch (err) {
           if (err instanceof NoFallbackError && bubbleNoFallback) {
+            // if (this.isRenderWorker) {
+            //   res.setHeader('x-no-fallback', '1')
+            //   res.send()
+            //   return {
+            //     finished: true,
+            //   }
+            // }
+            //
             return {
               finished: false,
             };
@@ -768,7 +1044,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       useFileSystemPublicRoutes,
       matchers: this.matchers,
       nextConfig: this.nextConfig,
-      localeNormalizer: this.localeNormalizer,
+      i18nProvider: this.i18nProvider,
     };
   }
 
@@ -802,6 +1078,12 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     const manifestFile = join(this.distDir, PRERENDER_MANIFEST);
     const manifest = requireManifest(manifestFile);
     return (this._cachedPreviewManifest = manifest);
+  }
+
+  protected getRoutesManifest() {
+    return getTracer().trace(NextNodeServerSpan.getRoutesManifest, () =>
+      requireManifest(join(this.distDir, ROUTES_MANIFEST))
+    );
   }
 
   protected attachRequestMeta(
