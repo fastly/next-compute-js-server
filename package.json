@@ -18,7 +18,7 @@
     "test-server": "c8 mocha -n no-warnings=86652 -n loader=ts-node/esm --extension ts --require test/mocha_bootstrap.js test/testHelpers.ts test/**/*.test.ts"
   },
   "peerDependencies": {
-    "next": "13.3.2",
+    "next": "13.3.2 || 13.3.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
