@@ -21,9 +21,7 @@ export type VcConfig =
 
 export const VERCEL_FUNCTION_CONFIG_FILENAME = '.vc-config.json';
 
-export const NEXT_VERSION = '13.3.2';
+export const NEXT_VERSION = '13.4.0';
 export const COMPATIBLE_NEXT_VERSIONS = [
-  '13.3.2',
-  '13.3.3',
-  '13.3.4',
+  '13.4.0',
 ];

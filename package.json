@@ -1,8 +1,8 @@
 {
-  "name": "@fastly/next-compute-js-server-13.3.2",
-  "version": "0.1.1",
+  "name": "@fastly/next-compute-js-server-13.4.0",
+  "version": "0.1.0",
   "license": "MIT",
-  "description": "Next.js Runtime for Fastly Compute@Edge (13.3.2)",
+  "description": "Next.js Runtime for Fastly Compute@Edge (13.4.0)",
   "main": "./dist/server/index.js",
   "types": "./dist/server/index.d.ts",
   "scripts": {
@@ -18,7 +18,7 @@
     "test-server": "c8 mocha -n no-warnings=86652 -n loader=ts-node/esm --extension ts --require test/mocha_bootstrap.js test/testHelpers.ts test/**/*.test.ts"
   },
   "peerDependencies": {
-    "next": "13.3.2 || 13.3.3 || 13.3.4",
+    "next": "13.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -51,7 +51,7 @@
     "assert": "^2.0.0",
     "c8": "^7.13.0",
     "mocha": "^10.2.0",
-    "next": "13.3.2",
+    "next": "13.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "rimraf": "^4.1.2",
