@@ -1,5 +1,22 @@
 import fs from 'fs';
 
+// Define fs.cpSync into existence
+//
+declare module 'fs' {
+  interface CopyOptionsBase {
+    dereference?: boolean;
+    errorOnExist?: boolean;
+    force?: boolean;
+    preserveTimestamps?: boolean;
+    recursive?: boolean;
+    verbatimSymlinks?: boolean;
+  }
+  interface CopySyncOptions extends CopyOptionsBase {
+    filter?(source: string, destination: string): boolean;
+  }
+  function cpSync(source: string | URL, destination: string | URL, opts?: CopySyncOptions): void;
+}
+
 export function writeFile(filePath: string, contents: string, description: string) {
 
   console.log(`Writing ${description} '${filePath}'...`);
