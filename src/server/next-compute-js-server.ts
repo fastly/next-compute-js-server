@@ -49,6 +49,7 @@ import {
 } from 'next/dist/server/request-meta';
 import { Route, RouterOptions } from 'next/dist/server/router';
 import { PayloadOptions, sendRenderResult } from 'next/dist/server/send-payload';
+import { createRequestResponseMocks } from 'next/dist/server/lib/mock-request';
 import { normalizePagePath } from 'next/dist/shared/lib/page-path/normalize-page-path';
 import { normalizeAppPath } from 'next/dist/shared/lib/router/utils/app-paths';
 import getRouteFromAssetPath from 'next/dist/shared/lib/router/utils/get-route-from-asset-path';
@@ -169,6 +170,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //     dir: this.dir,
     //     workerType: 'render',
     //     hostname: this.hostname,
+    //     minimalMode: true /* this.minimalMode */,
     //     dev: !!options.dev,
     //   }
     //   const { createWorker, createIpcServer } =
@@ -176,18 +178,21 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //   this.renderWorkersPromises = new Promise<void>(async (resolveWorkers) => {
     //     try {
     //       this.renderWorkers = {}
-    //       const { ipcPort } = await createIpcServer(this)
+    //       const { ipcPort, ipcValidationKey } = await createIpcServer(this)
     //       if (this.hasAppDir) {
     //         this.renderWorkers.app = createWorker(
     //           this.port || 0,
     //           ipcPort,
+    //           ipcValidationKey,
     //           options.isNodeDebugging,
-    //           'app'
+    //           'app',
+    //           this.nextConfig.experimental.serverActions
     //         )
     //       }
     //       this.renderWorkers.pages = createWorker(
     //         this.port || 0,
     //         ipcPort,
+    //         ipcValidationKey,
     //         options.isNodeDebugging,
     //         'pages'
     //       )
@@ -408,16 +413,13 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       pageModule,
       {
         ...this.renderOpts.previewProps,
-        revalidate: (newReq: IncomingMessage, newRes: ServerResponse) =>
-          this.getRequestHandler()(
-            new NodeNextRequest(newReq),
-            new NodeNextResponse(newRes)
-          ),
+        revalidate: this.revalidate.bind(this),
         // internal config so is not typed
         trustHostHeader: (this.nextConfig.experimental as Record<string, any>)
           .trustHostHeader,
         allowedRevalidateHeaderKeys:
           this.nextConfig.experimental.allowedRevalidateHeaderKeys,
+        hostname: this.hostname,
       },
       this.minimalMode,
       this.renderOpts.dev,
@@ -460,6 +462,36 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       await handler(req, res);
       return await toComputeResponse(res);
     };
+  }
+
+  public async revalidate({
+    urlPath,
+    revalidateHeaders,
+    opts,
+  }: {
+    urlPath: string
+    revalidateHeaders: { [key: string]: string | string[] }
+    opts: { unstable_onlyGenerated?: boolean }
+  }) {
+    const mocked = createRequestResponseMocks({
+      url: urlPath,
+      headers: revalidateHeaders,
+    });
+
+    const handler = this.getRequestHandler();
+    await handler(
+      new NodeNextRequest(mocked.req),
+      new NodeNextResponse(mocked.res),
+    );
+    await mocked.res.hasStreamed;
+
+    if (
+      mocked.res.getHeader('x-nextjs-cache') !== 'REVALIDATED' &&
+      !(mocked.res.statusCode === 404 && opts.unstable_onlyGenerated)
+    ) {
+      throw new Error(`Invalid response ${mocked.res.statusCode}`);
+    }
+    return {};
   }
 
   public async render(
@@ -1092,6 +1124,30 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     if (this._cachedPreviewManifest) {
       return this._cachedPreviewManifest
     }
+    // if (
+    //   this.renderOpts?.dev ||
+    //   this.serverOptions?.dev ||
+    //   this.renderWorkerOpts?.dev ||
+    //   process.env.NODE_ENV === 'development' ||
+    //   process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
+    // ) {
+    //   this._cachedPreviewManifest = {
+    //     version: 4,
+    //     routes: {},
+    //     dynamicRoutes: {},
+    //     notFoundRoutes: [],
+    //     preview: {
+    //       previewModeId: require('crypto').randomBytes(16).toString('hex'),
+    //       previewModeSigningKey: require('crypto')
+    //         .randomBytes(32)
+    //         .toString('hex'),
+    //       previewModeEncryptionKey: require('crypto')
+    //         .randomBytes(32)
+    //         .toString('hex'),
+    //     },
+    //   }
+    //   return this._cachedPreviewManifest
+    // }
     const manifestFile = join(this.distDir, PRERENDER_MANIFEST);
     const manifest = requireManifest(manifestFile);
     return (this._cachedPreviewManifest = manifest);
