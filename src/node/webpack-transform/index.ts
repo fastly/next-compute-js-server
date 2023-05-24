@@ -1,4 +1,6 @@
 import type { Configuration } from 'webpack';
+const packageJson = require('../../../package.json');
+const thisPackageName: string = packageJson.name;
 
 export default function webpackTransform(config: Configuration, webpack: any) {
 
@@ -16,12 +18,21 @@ export default function webpackTransform(config: Configuration, webpack: any) {
       new webpack.optimize.LimitChunkCountPlugin({
         maxChunks: 1,
       }),
+      new webpack.NormalModuleReplacementPlugin(
+        /\/lib\/server-ipc\/invoke-request$/,
+        `${thisPackageName}/dist/server/lib/empty-module`,
+      ),
     ],
     resolve: {
       ...config.resolve,
       alias: {
         ...config.resolve?.alias,
         'next/dist/compiled/raw-body': require.resolve('raw-body'),
+        'react-dom/server.edge$': `${thisPackageName}/dist/server/lib/empty-module`,
+        'react-server-dom-webpack/client$': `${thisPackageName}/dist/server/lib/empty-module`,
+        'react-server-dom-webpack/client.edge$': `${thisPackageName}/dist/server/lib/empty-module`,
+        'react-server-dom-webpack/server.edge$': `${thisPackageName}/dist/server/lib/empty-module`,
+        'react-server-dom-webpack/server.node$': `${thisPackageName}/dist/server/lib/empty-module`,
       },
       fallback: {
         ...config.resolve?.fallback,
