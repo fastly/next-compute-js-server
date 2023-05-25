@@ -17,11 +17,6 @@
     "test": "npm run test-server",
     "test-server": "c8 mocha -n no-warnings=86652 -n loader=ts-node/esm --extension ts --require test/mocha_bootstrap.js test/testHelpers.ts test/**/*.test.ts"
   },
-  "peerDependencies": {
-    "next": "13.4.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
   "dependencies": {
     "@fastly/compute-js-static-publish": "^5.0.0",
     "@fastly/http-compute-js": "^1.0.0",
