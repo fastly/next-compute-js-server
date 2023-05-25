@@ -1,6 +1,7 @@
 import type { Configuration } from 'webpack';
-const packageJson = require('../../../package.json');
-const thisPackageName: string = packageJson.name;
+import path from "path";
+
+const EMPTY_MODULE = path.resolve(__dirname, '../../server/lib/empty-module');
 
 export default function webpackTransform(config: Configuration, webpack: any) {
 
@@ -20,7 +21,7 @@ export default function webpackTransform(config: Configuration, webpack: any) {
       }),
       new webpack.NormalModuleReplacementPlugin(
         /\/lib\/server-ipc\/invoke-request$/,
-        `${thisPackageName}/dist/server/lib/empty-module`,
+        EMPTY_MODULE,
       ),
     ],
     resolve: {
@@ -28,11 +29,11 @@ export default function webpackTransform(config: Configuration, webpack: any) {
       alias: {
         ...config.resolve?.alias,
         'next/dist/compiled/raw-body': require.resolve('raw-body'),
-        'react-dom/server.edge$': `${thisPackageName}/dist/server/lib/empty-module`,
-        'react-server-dom-webpack/client$': `${thisPackageName}/dist/server/lib/empty-module`,
-        'react-server-dom-webpack/client.edge$': `${thisPackageName}/dist/server/lib/empty-module`,
-        'react-server-dom-webpack/server.edge$': `${thisPackageName}/dist/server/lib/empty-module`,
-        'react-server-dom-webpack/server.node$': `${thisPackageName}/dist/server/lib/empty-module`,
+        'react-dom/server.edge$': EMPTY_MODULE,
+        'react-server-dom-webpack/client$': EMPTY_MODULE,
+        'react-server-dom-webpack/client.edge$': EMPTY_MODULE,
+        'react-server-dom-webpack/server.edge$': EMPTY_MODULE,
+        'react-server-dom-webpack/server.node$': EMPTY_MODULE,
       },
       fallback: {
         ...config.resolve?.fallback,
