@@ -161,8 +161,8 @@ function buildFastlyNextLauncherScript(data: NextLauncherData) {
 function buildInitScript(nextRuntimePackage: string) {
   return `
     module.exports = function({contentAssets, moduleAssets}) {
-      const { initFsAssets } = require(${JSON.stringify(nextRuntimePackage)});
-      initFsAssets(contentAssets, moduleAssets);
+      const { init } = require(${JSON.stringify(nextRuntimePackage)});
+      init({contentAssets, moduleAssets});
     };
   `;
 }
