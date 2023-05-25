@@ -5,7 +5,7 @@
  * Portions of this file Copyright Vercel, Inc., licensed under the MIT license. See LICENSE file for details.
  */
 
-import { join } from 'path';
+import { isAbsolute, join } from 'path';
 import { env } from "fastly:env";
 
 import {
@@ -278,7 +278,11 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     const {incrementalCacheHandlerPath} = this.nextConfig.experimental;
 
     if (incrementalCacheHandlerPath) {
-      CacheHandler = requireModule(join(this.distDir, incrementalCacheHandlerPath));
+      CacheHandler = requireModule(
+        isAbsolute(incrementalCacheHandlerPath) ?
+          incrementalCacheHandlerPath :
+          join(this.distDir, incrementalCacheHandlerPath)
+      );
       CacheHandler = CacheHandler.default || CacheHandler;
     }
 
@@ -447,11 +451,12 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     void this.prepare();
     const handler = super.getRequestHandler();
     return async (req, res, parsedUrl) => {
-      return handler(
-        this.normalizeReq(req),
-        this.normalizeRes(res),
-        parsedUrl
-      );
+      const normalizedReq = this.normalizeReq(req)
+      const normalizedRes = this.normalizeRes(res)
+      // if (this.renderOpts.dev) {
+      // ... NOTE: Next.js contains dev code here, which we don't do
+      // }
+      return handler(normalizedReq, normalizedRes, parsedUrl)
     };
   }
 
@@ -953,7 +958,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         //       'x-invoke-path': invokePathname,
         //       'x-invoke-query': encodeURIComponent(invokeQuery),
         //     }
-        //
+        //     ;(req as any).didInvokePath = true
         //     const invokeRes = await invokeRequest(
         //       renderUrl.toString(),
         //       {
