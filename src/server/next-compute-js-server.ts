@@ -145,7 +145,14 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //   process.env.__NEXT_SCRIPT_WORKERS = JSON.stringify(true);
     // }
 
-    if (/* !options.dev && */ !this.nextConfig.experimental.appDocumentPreloading) {
+    const { appDocumentPreloading } = this.nextConfig.experimental;
+    const isDefaultEnabled = typeof appDocumentPreloading === 'undefined';
+
+    if (
+      /* !options.dev && */
+      (appDocumentPreloading === true ||
+        !(/*this.minimalMode &&*/ isDefaultEnabled))
+    ) {
       // pre-warm _document and _app as these will be
       // needed for most requests
       loadComponents({
