@@ -1,9 +1,4 @@
 import * as fs from 'fs';
-import type {
-  TransformContext,
-  VcConfigEdge,
-} from '@fastly/serve-vercel-build-output';
-
 import {
   COMPATIBLE_NEXT_VERSIONS,
   VcConfigServerless,
@@ -14,6 +9,11 @@ import {
 
 import * as nodejs from './nodejs';
 import * as edge from './edge';
+
+import type {
+  TransformContext,
+  VcConfigEdge,
+} from '@fastly/serve-vercel-build-output';
 
 async function transformFunction(
   ctx: TransformContext
