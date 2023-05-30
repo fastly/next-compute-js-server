@@ -1,14 +1,14 @@
 import path from 'path';
 import fs from 'fs';
 import {
-  VcConfigEdge,
-} from '@fastly/serve-vercel-build-output';
-
-import {
   VERCEL_FUNCTION_CONFIG_FILENAME,
   VcConfig,
   VcConfigServerless,
 } from './constants';
+
+import type {
+  VcConfigEdge,
+} from '@fastly/serve-vercel-build-output';
 
 // Map a function's path to its function name route
 // eg:
