@@ -23,6 +23,7 @@ import { PrerenderManifest } from 'next/dist/build';
 import { PagesManifest } from 'next/dist/build/webpack/plugins/pages-manifest-plugin';
 import isError from 'next/dist/lib/is-error';
 import { CustomRoutes } from 'next/dist/lib/load-custom-routes';
+import { COOKIE_NAME_PRERENDER_BYPASS, COOKIE_NAME_PRERENDER_DATA } from 'next/dist/server/api-utils';
 import { apiResolver } from 'next/dist/server/api-utils/node';
 import { BaseNextRequest, BaseNextResponse } from 'next/dist/server/base-http';
 import BaseServer, {
@@ -247,6 +248,48 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
     delete query.__nextLocale
     delete query.__nextDefaultLocale
+
+    const originalResponse = (res as NodeNextResponse).originalResponse;
+
+    // The ISR-related bypass and preview data cookies will set "Secure" and "SameSite=None".
+    // When running localhost, patch Set-Cookie to remove these cookie attributes so that
+    // the cookies are usable in non-https.
+    if (env("FASTLY_HOSTNAME") === 'localhost' && !(originalResponse as any)._fastlySetHeaderPatched) {
+      (originalResponse as any)._fastlySetHeaderPatched = true;
+
+      const origSetHeader = originalResponse.setHeader;
+      originalResponse.setHeader = (name: string, val: string | string[]) => {
+        if (name.toLowerCase() !== 'set-cookie') {
+          return origSetHeader.call(originalResponse, name, val);
+        }
+
+        const replaced = (Array.isArray(val) ? val : [ val ])
+          .map(v => {
+            // only modify these two cookies
+            if (
+              !v.startsWith(COOKIE_NAME_PRERENDER_BYPASS + '=') &&
+              !v.startsWith(COOKIE_NAME_PRERENDER_DATA + '=')
+            ) {
+              return v;
+            }
+
+            return v.split(';')
+              .map(x => {
+                if (x.trim().toLowerCase() === 'secure') {
+                  return null;
+                }
+                if (x.trim().toLowerCase() === 'samesite=none') {
+                  return ' SameSite=Lax';
+                }
+                return x;
+              })
+              .filter(x => x != null)
+              .join(';');
+          });
+
+        return origSetHeader.call(originalResponse, name, replaced);
+      };
+    }
 
     await apiResolver(
       (req as NodeNextRequest).originalRequest,
