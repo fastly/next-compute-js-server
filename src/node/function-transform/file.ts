@@ -11,13 +11,16 @@ export function writeFile(filePath: string, contents: string, description: strin
 
 }
 
-function copyFileOrFiles(srcPath: string, destPath: string, description: string, recursive: boolean = false) {
+function copyFileOrFiles(srcPath: string, destPath: string, description: string, recursive: boolean = false, filter: fs.CopySyncOptions['filter'] = undefined) {
 
   console.log(`Copying ${description} from '${srcPath}' to '${destPath}'...`);
   fs.cpSync(
     srcPath,
     destPath,
-    { recursive, }
+    {
+      recursive,
+      filter,
+    }
   );
 
 }
@@ -28,9 +31,9 @@ export function copyFile(srcPath: string, destPath: string, description: string)
 
 }
 
-export function copyFiles(srcPath: string, destPath: string, description: string) {
+export function copyFiles(srcPath: string, destPath: string, description: string, filter: fs.CopySyncOptions['filter'] = undefined) {
 
-  copyFileOrFiles(srcPath, destPath, description, true);
+  copyFileOrFiles(srcPath, destPath, description, true, filter);
 
 }
 
