@@ -1,12 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import {
+import { VERCEL_FUNCTION_CONFIG_FILENAME } from './constants';
+import { copyFile } from './file';
+
+import type {
   TransformContext,
   VcConfigEdge,
 } from '@fastly/serve-vercel-build-output';
-
-import { VERCEL_FUNCTION_CONFIG_FILENAME } from './constants';
-import { copyFile } from './file';
 
 export function validateConfig(vcConfig: VcConfigEdge) {
   // no other things to validate
