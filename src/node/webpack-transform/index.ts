@@ -3,6 +3,13 @@ import path from "path";
 
 const EMPTY_MODULE = path.resolve(__dirname, '../../server/lib/empty-module');
 
+let compiled: Record<string, string> = {};
+try {
+  require.resolve('@opentelemetry/api');
+} catch {
+  compiled['@opentelemetry/api'] = 'next/dist/compiled/@opentelemetry/api';
+}
+
 export default function webpackTransform(config: Configuration, webpack: any) {
 
   return {
@@ -28,6 +35,7 @@ export default function webpackTransform(config: Configuration, webpack: any) {
       ...config.resolve,
       alias: {
         ...config.resolve?.alias,
+        ...compiled,
         'next/dist/compiled/raw-body': require.resolve('raw-body'),
         'react-dom/server.edge$': EMPTY_MODULE,
         'react-server-dom-webpack/client$': EMPTY_MODULE,
