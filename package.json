@@ -1,8 +1,8 @@
 {
-  "name": "@fastly/next-compute-js-server-13.4.3",
-  "version": "0.2.0",
+  "name": "@fastly/next-compute-js-server-13.4.4",
+  "version": "0.1.0-alpha.0",
   "license": "MIT",
-  "description": "Next.js Runtime for Fastly Compute@Edge (13.4.3)",
+  "description": "Next.js Runtime for Fastly Compute@Edge (13.4.4)",
   "main": "./dist/server/index.js",
   "types": "./dist/server/index.d.ts",
   "scripts": {
