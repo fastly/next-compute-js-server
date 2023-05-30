@@ -1,11 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import {
-  TransformContext,
-  VcConfigEdge,
-} from '@fastly/serve-vercel-build-output';
-
-import {
   SERVER_FILES_MANIFEST,
 } from 'next/constants';
 import {
@@ -20,6 +15,11 @@ import {
   mapFunctionPathToFunctionName,
 } from "./util";
 import { copyFiles, writeFile } from './file';
+
+import type {
+  TransformContext,
+  VcConfigEdge,
+} from '@fastly/serve-vercel-build-output';
 
 type NextLauncherData = {
   nextRuntimePackage: string,        // will be equal to transformName
