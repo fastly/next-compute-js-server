@@ -30,6 +30,7 @@ const DIST_DIR = '.next'; // vercel build always uses .next
 const NEXT_LAUNCHER_FILENAME = '___next_launcher.cjs';
 const FASTLY_NEXT_LAUNCHER_FILENAME = '___fastly_next_launcher.cjs';
 const INIT_SCRIPT_FILENAME = `next-compute-js-server-${NEXT_VERSION}.cjs`;
+const NEXT_FILES_ROOT_DEST = `/lib/next-${NEXT_VERSION}`;
 
 export function validateConfig(vcConfig: VcConfigServerless) {
 
@@ -40,6 +41,52 @@ export function validateConfig(vcConfig: VcConfigServerless) {
 }
 
 export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext) {
+
+  // Create /lib/ directory if it doesn't already exist
+  const libDir = path.join(ctx.buildOutputPath, 'lib');
+  if (!fs.existsSync(libDir)) {
+    fs.mkdirSync(libDir, {recursive: true});
+  }
+
+  // Copy /lib/next-NEXT_VERSION/.next files.  This needs to happen only once regardless of the
+  // number of times this plugin runs.
+  const nextRootDest = path.join(ctx.buildOutputPath, NEXT_FILES_ROOT_DEST);
+  if (!fs.existsSync(nextRootDest)) {
+    const srcDir = path.join(ctx.nextProjectPath, DIST_DIR);
+    copyFiles(
+      srcDir,
+      path.join(nextRootDest, DIST_DIR),
+      `'${DIST_DIR}' files`,
+      (src) => {
+        if (
+          src.endsWith('.js.map') ||
+          src.endsWith('.nft.json') ||
+          src.startsWith(path.join(srcDir, 'cache')) ||
+          src.startsWith(path.join(srcDir, 'static')) ||
+          src.startsWith(path.join(srcDir, 'trace'))
+        ) {
+          console.log(`Skipping ${src}`);
+          return false;
+        }
+        return true;
+      }
+    );
+  }
+
+  // Create /init/ script. This needs to happen only once regardless of the number of
+  // times this plugin runs.
+  const initScriptPath = path.join(ctx.buildOutputPath, 'init', INIT_SCRIPT_FILENAME);
+
+  if (!fs.existsSync(initScriptPath)) {
+    fs.mkdirSync(path.dirname(initScriptPath), { recursive: true });
+
+    const initScript = buildInitScript(ctx.transformName);
+    writeFile(
+      initScriptPath,
+      initScript,
+      'Plugin Init script'
+    );
+  }
 
   console.log(`Next.js nodejs transform STARTING for '${ctx.functionPath}'.`);
 
@@ -62,13 +109,6 @@ export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext)
     'Fastly Next.js Launcher'
   );
 
-  // Copy next build output files between .next directories
-  copyFiles(
-    path.join(ctx.functionFilesSourcePath, DIST_DIR),
-    path.join(ctx.functionFilesTargetPath, DIST_DIR),
-    `'${DIST_DIR}' files`
-  );
-
   // Create a new .vc-config.json file for the transformed function
   const newVcConfig: VcConfigEdge = {
     runtime: 'edge',
@@ -86,23 +126,6 @@ export function doTransform(vcConfig: VcConfigServerless, ctx: TransformContext)
     JSON.stringify(newVcConfig, undefined, 2),
     'Function Config file'
   );
-
-  // Create /init/ script. This needs to happen only once regardless of the number of
-  // times this plugin runs.
-  const initScriptPath = path.join(ctx.buildOutputPath, 'init', INIT_SCRIPT_FILENAME);
-
-  if (!fs.existsSync(initScriptPath)) {
-
-    fs.mkdirSync(path.dirname(initScriptPath), { recursive: true });
-
-    const initScript = buildInitScript(ctx.transformName);
-    writeFile(
-      initScriptPath,
-      initScript,
-      'Plugin Init script'
-    );
-
-  }
 
   console.log(`Next.js nodejs transform COMPLETED for '${ctx.functionPath}'.`);
 
@@ -138,7 +161,7 @@ function buildFastlyNextLauncherScript(data: NextLauncherData) {
     
     const conf = ${JSON.stringify(data.conf)};
     
-    initFs(globalThis.FASTLY_SVBO_PWD);
+    initFs("${path.join(NEXT_FILES_ROOT_DEST)}");
     
     const nextServer = new NextComputeJsServer({
       conf,
