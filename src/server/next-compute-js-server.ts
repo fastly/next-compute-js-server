@@ -179,6 +179,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //     hostname: this.hostname,
     //     minimalMode: true /* this.minimalMode */,
     //     dev: !!options.dev,
+    //     isNodeDebugging: !!options.isNodeDebugging,
     //   }
     //   const { createWorker, createIpcServer } =
     //     require('./lib/server-ipc') as typeof import('./lib/server-ipc')
@@ -187,8 +188,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //       this.renderWorkers = {}
     //       const { ipcPort, ipcValidationKey } = await createIpcServer(this)
     //       if (this.hasAppDir) {
-    //         this.renderWorkers.app = createWorker(
-    //           this.port || 0,
+    //         this.renderWorkers.app = await createWorker(
     //           ipcPort,
     //           ipcValidationKey,
     //           options.isNodeDebugging,
@@ -196,8 +196,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //           this.nextConfig.experimental.serverActions
     //         )
     //       }
-    //       this.renderWorkers.pages = createWorker(
-    //         this.port || 0,
+    //       this.renderWorkers.pages = await createWorker(
     //         ipcPort,
     //         ipcValidationKey,
     //         options.isNodeDebugging,
