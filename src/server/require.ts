@@ -203,7 +203,7 @@ export async function requireModule(
     moduleAssets.getAsset(relativePath + '/index.js') ??
     null;
   if (file == null) {
-    throw { 'code': 'MODULE_NOT_FOUND' };
+    throw { relativePath, 'code': 'MODULE_NOT_FOUND' };
   }
   return file.getModule();
 }
