@@ -1,8 +1,8 @@
 {
-  "name": "@fastly/next-compute-js-server-13.4.4",
-  "version": "0.2.3",
+  "name": "@fastly/next-compute-js-server-13.4.6",
+  "version": "0.2.3-pre.0",
   "license": "MIT",
-  "description": "Next.js Runtime for Fastly Compute@Edge (13.4.4)",
+  "description": "Next.js Runtime for Fastly Compute@Edge (13.4.6)",
   "main": "./dist/server/index.js",
   "types": "./dist/server/index.d.ts",
   "scripts": {
@@ -46,7 +46,7 @@
     "assert": "^2.0.0",
     "c8": "^7.13.0",
     "mocha": "^10.2.0",
-    "next": "13.4.4",
+    "next": "13.4.6",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "rimraf": "^4.1.2",
