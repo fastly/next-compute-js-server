@@ -537,7 +537,8 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       new NodeNextRequest(mocked.req),
       new NodeNextResponse(mocked.res),
     );
-    await mocked.res.hasStreamed;
+    // In 13.4.5+, hasStreamed is @internal to Next.js
+    await (mocked.res as unknown as {hasStreamed: Promise<void>}).hasStreamed;
 
     if (
       mocked.res.getHeader('x-nextjs-cache') !== 'REVALIDATED' &&
