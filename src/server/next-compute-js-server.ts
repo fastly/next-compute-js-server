@@ -12,7 +12,6 @@ import {
   APP_PATHS_MANIFEST,
   BUILD_ID_FILE,
   CLIENT_REFERENCE_MANIFEST,
-  FLIGHT_SERVER_CSS_MANIFEST,
   NEXT_FONT_MANIFEST,
   PAGES_MANIFEST,
   PRERENDER_MANIFEST,
@@ -25,6 +24,7 @@ import {
 
 import { PrerenderManifest } from 'next/dist/build';
 import { PagesManifest } from 'next/dist/build/webpack/plugins/pages-manifest-plugin';
+import { NEXT_RSC_UNION_QUERY } from 'next/dist/client/components/app-router-headers';
 import { CustomRoutes } from 'next/dist/lib/load-custom-routes';
 import { COOKIE_NAME_PRERENDER_BYPASS, COOKIE_NAME_PRERENDER_DATA } from 'next/dist/server/api-utils';
 import { apiResolver } from 'next/dist/server/api-utils/node';
@@ -591,7 +591,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     // object here but only updating its `clientReferenceManifest` field.
     // https://github.com/vercel/next.js/blob/df7cbd904c3bd85f399d1ce90680c0ecf92d2752/packages/next/server/render.tsx#L947-L952
     renderOpts.clientReferenceManifest = this.clientReferenceManifest;
-    renderOpts.serverCSSManifest = this.serverCSSManifest
     renderOpts.nextFontManifest = this.nextFontManifest
 
     if (this.hasAppDir && renderOpts.isAppPath) {
@@ -732,16 +731,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       this.distDir,
       'server',
       CLIENT_REFERENCE_MANIFEST + '.json'
-    ));
-  }
-
-  protected getServerCSSManifest() {
-    // TODO: If we want to support Server Components
-    if (!this.hasAppDir) return undefined;
-    return requireManifest(join(
-      this.distDir,
-      SERVER_DIRECTORY,
-      FLIGHT_SERVER_CSS_MANIFEST + '.json'
     ));
   }
 
@@ -1066,9 +1055,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         //   }
         // }
         //
-        if (match) {
-          addRequestMeta(req, '_nextMatch', match)
-        }
 
         // Try to handle the given route with the configured handlers.
         if (match) {
@@ -1087,6 +1073,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
               return { finished: true };
             }
             delete query._nextBubbleNoFallback
+            delete query[NEXT_RSC_UNION_QUERY]
 
             handled = await this.handleApiRequest(
               req,
