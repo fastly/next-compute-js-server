@@ -1,3 +1,8 @@
+/*
+ * Copyright Fastly, Inc.
+ * Licensed under the MIT license. See LICENSE file for details.
+ */
+
 import fs from 'fs';
 
 export function writeFile(filePath: string, contents: string, description: string) {
