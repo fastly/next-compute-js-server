@@ -1,3 +1,8 @@
+/*
+ * Copyright Fastly, Inc.
+ * Licensed under the MIT license. See LICENSE file for details.
+ */
+
 import type { ContentAssets, ModuleAssets } from '@fastly/compute-js-static-publish';
 
 let _fsAssets: {
