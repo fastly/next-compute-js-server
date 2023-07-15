@@ -1,3 +1,8 @@
+/*
+ * Copyright Fastly, Inc.
+ * Licensed under the MIT license. See LICENSE file for details.
+ */
+
 import * as fs from 'fs';
 import {
   COMPATIBLE_NEXT_VERSIONS,
