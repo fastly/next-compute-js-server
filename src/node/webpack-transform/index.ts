@@ -1,3 +1,8 @@
+/*
+ * Copyright Fastly, Inc.
+ * Licensed under the MIT license. See LICENSE file for details.
+ */
+
 import type { Configuration } from 'webpack';
 
 export default function webpackTransform(config: Configuration, webpack: any) {

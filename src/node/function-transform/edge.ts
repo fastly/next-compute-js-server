@@ -1,3 +1,8 @@
+/*
+ * Copyright Fastly, Inc.
+ * Licensed under the MIT license. See LICENSE file for details.
+ */
+
 import fs from 'fs';
 import path from 'path';
 import { VERCEL_FUNCTION_CONFIG_FILENAME } from './constants';
