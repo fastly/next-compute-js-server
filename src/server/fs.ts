@@ -52,3 +52,8 @@ export function existsSync(dir: string) {
   const fullPath = path.join(settings.dir, dir);
   return settings.contentAssets.getAsset(fullPath) != null;
 }
+
+export function resolve(...paths: string[]) {
+  const settings = getFsSettings();
+  return path.resolve(settings.dir, ...paths);
+}

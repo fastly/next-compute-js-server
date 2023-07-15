@@ -27,13 +27,17 @@ const pagePathCache = new LRUCache<string, string | null>({
   max: 1000,
 });
 
+const loadManifest = (manifestPath: string) => {
+  return requireManifest(manifestPath)
+}
+
 export function getMaybePagePath(
   page: string,
   distDir: string,
-  locales?: string[],
-  appDirEnabled?: boolean
+  locales: string[] | undefined,
+  isAppPath: boolean
 ) {
-  const cacheKey = `${page}:${locales}`;
+  const cacheKey = `${page}:${distDir}:${locales}:${isAppPath}`
 
   if (pagePathCache.has(cacheKey)) {
     return pagePathCache.get(cacheKey) as string | null;
@@ -42,14 +46,13 @@ export function getMaybePagePath(
   const serverBuildPath = join(distDir, SERVER_DIRECTORY);
   let appPathsManifest: undefined | PagesManifest;
 
-  if (appDirEnabled) {
-    appPathsManifest = require(join(serverBuildPath, APP_PATHS_MANIFEST));
+  if (isAppPath) {
+    appPathsManifest = loadManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
   }
 
-  const pagesManifest = requireManifest(join(
-    serverBuildPath,
-    PAGES_MANIFEST
-  )) as PagesManifest;
+  const pagesManifest = loadManifest(
+    join(serverBuildPath, PAGES_MANIFEST)
+  ) as PagesManifest;
 
   try {
     page = denormalizePagePath(normalizePagePath(page));
@@ -101,10 +104,10 @@ export function getMaybePagePath(
 export function getPagePath(
   page: string,
   distDir: string,
-  locales?: string[],
-  appDirEnabled?: boolean
+  locales: string[] | undefined,
+  isAppPath: boolean
 ): string {
-  const pagePath = getMaybePagePath(page, distDir, locales, appDirEnabled);
+  const pagePath = getMaybePagePath(page, distDir, locales, isAppPath);
 
   if (!pagePath) {
     throw new PageNotFoundError(page);
@@ -121,9 +124,9 @@ export function getPagePath(
 export async function requirePage(
   page: string,
   distDir: string,
-  appDirEnabled?: boolean
+  isAppPath: boolean
 ): Promise<any> {
-  const pagePath = getPagePath(page, distDir, undefined, appDirEnabled);
+  const pagePath = getPagePath(page, distDir, undefined, isAppPath);
   if (pagePath.endsWith('.html')) {
     try {
       return readAssetFileAsString(pagePath);
@@ -192,8 +195,18 @@ export function requireManifest(
 export async function requireModule(
   path: string,
 ) {
+  // TODO: eventually move this out into its own package
   const { moduleAssets, dir } = getFsSettings();
+  // Do Node.js magic to find file
   const relativePath = resolve(dir, path);
-  const file = moduleAssets.getAsset(relativePath);
-  return file?.getModule();
+  const file =
+    moduleAssets.getAsset(relativePath) ??
+    moduleAssets.getAsset(relativePath + '.js') ??
+    // NOTE: Node.js would check .json here, before index.js
+    moduleAssets.getAsset(relativePath + '/index.js') ??
+    null;
+  if (file == null) {
+    throw { 'code': 'MODULE_NOT_FOUND' };
+  }
+  return file.getModule();
 }

@@ -9,14 +9,23 @@ import { join } from 'path';
 
 import {
   BUILD_MANIFEST,
-  FLIGHT_MANIFEST,
+  CLIENT_REFERENCE_MANIFEST,
   REACT_LOADABLE_MANIFEST,
   SERVER_DIRECTORY,
+  SERVER_REFERENCE_MANIFEST,
 } from 'next/constants';
 import { interopDefault } from 'next/dist/lib/interop-default';
 import { requireManifest, requirePage } from './require';
+import { getTracer } from 'next/dist/server/lib/trace/tracer';
+import { LoadComponentsSpan } from 'next/dist/server/lib/trace/constants';
 
-import type { LoadComponentsReturnType } from 'next/dist/server/load-components';
+import type { ClientReferenceManifest } from 'next/dist/build/webpack/plugins/flight-manifest-plugin';
+import type { BuildManifest } from 'next/dist/server/get-page-files';
+import type { LoadComponentsReturnType, ReactLoadableManifest } from 'next/dist/server/load-components';
+
+async function loadManifest<T>(manifestPath: string, _ = 1): Promise<T> {
+  return requireManifest(manifestPath) as T;
+}
 
 /**
  * Loads React component associated with a given pathname.
@@ -27,7 +36,7 @@ import type { LoadComponentsReturnType } from 'next/dist/server/load-components'
  *  * serverless is not supported
  *  * use
  */
-export async function loadComponents({
+export async function loadComponentsImpl({
   distDir,
   pathname,
   hasServerComponents,
@@ -50,12 +59,25 @@ export async function loadComponents({
     requirePage(pathname, distDir, isAppPath)
   );
 
-  const [buildManifest, reactLoadableManifest, serverComponentManifest] =
+  const [
+    buildManifest,
+    reactLoadableManifest,
+    clientReferenceManifest,
+    serverActionsManifest,
+  ] =
     await Promise.all([
-      requireManifest(join(distDir, BUILD_MANIFEST)),
-      requireManifest(join(distDir, REACT_LOADABLE_MANIFEST)),
+      loadManifest<BuildManifest>(join(distDir, BUILD_MANIFEST)),
+      loadManifest<ReactLoadableManifest>(join(distDir, REACT_LOADABLE_MANIFEST)),
       hasServerComponents ?
-        requireManifest(join(distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json')) :
+        loadManifest<ClientReferenceManifest>(
+          join(distDir, SERVER_DIRECTORY, CLIENT_REFERENCE_MANIFEST + '.json')
+        ) :
+        undefined,
+      hasServerComponents ?
+        loadManifest(
+          join(distDir, SERVER_DIRECTORY, SERVER_REFERENCE_MANIFEST + '.json')
+        )
+          .catch(() => null) :
         null,
     ]);
 
@@ -76,8 +98,14 @@ export async function loadComponents({
     getServerSideProps,
     getStaticProps,
     getStaticPaths,
-    serverComponentManifest,
+    clientReferenceManifest,
+    serverActionsManifest,
     isAppPath,
     pathname,
   };
 }
+
+export const loadComponents = getTracer().wrap(
+  LoadComponentsSpan.loadComponents,
+  loadComponentsImpl
+);
