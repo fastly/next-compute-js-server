@@ -9,14 +9,23 @@ import { join } from 'path';
 
 import {
   BUILD_MANIFEST,
-  FLIGHT_MANIFEST,
+  CLIENT_REFERENCE_MANIFEST,
   REACT_LOADABLE_MANIFEST,
   SERVER_DIRECTORY,
+  SERVER_REFERENCE_MANIFEST,
 } from 'next/constants';
 import { interopDefault } from 'next/dist/lib/interop-default';
 import { requireManifest, requirePage } from './require';
+import { getTracer } from 'next/dist/server/lib/trace/tracer';
+import { LoadComponentsSpan } from 'next/dist/server/lib/trace/constants';
 
-import type { LoadComponentsReturnType } from 'next/dist/server/load-components';
+import type { ClientReferenceManifest } from 'next/dist/build/webpack/plugins/flight-manifest-plugin';
+import type { BuildManifest } from 'next/dist/server/get-page-files';
+import type { LoadComponentsReturnType, ReactLoadableManifest } from 'next/dist/server/load-components';
+
+async function loadManifest<T>(manifestPath: string, _ = 1): Promise<T> {
+  return requireManifest(manifestPath) as T;
+}
 
 /**
  * Loads React component associated with a given pathname.
@@ -27,41 +36,50 @@ import type { LoadComponentsReturnType } from 'next/dist/server/load-components'
  *  * serverless is not supported
  *  * use
  */
-export async function loadComponents(
-  distDir: string,
-  pathname: string,
-  serverless: boolean,
-  hasServerComponents: boolean,
+export async function loadComponentsImpl({
+  distDir,
+  pathname,
+  hasServerComponents,
+  isAppPath,
+}: {
+  distDir: string
+  pathname: string
+  hasServerComponents: boolean
   isAppPath: boolean
-): Promise<LoadComponentsReturnType> {
-  if (serverless) {
-    throw new Error("serverless not supported for this platform!");
-  }
-
+}): Promise<LoadComponentsReturnType> {
   let DocumentMod = {};
   let AppMod = {};
   if (!isAppPath) {
     [DocumentMod, AppMod] = await Promise.all([
-      Promise.resolve().then(() =>
-        requirePage('/_document', distDir, serverless, false)
-      ),
-      Promise.resolve().then(() =>
-        requirePage('/_app', distDir, serverless, false)
-      ),
+      Promise.resolve().then(() => requirePage('/_document', distDir, false)),
+      Promise.resolve().then(() => requirePage('/_app', distDir, false)),
     ]);
   }
-
   const ComponentMod = await Promise.resolve().then(() =>
-    requirePage(pathname, distDir, serverless, isAppPath)
+    requirePage(pathname, distDir, isAppPath)
   );
 
-  const [buildManifest, reactLoadableManifest, serverComponentManifest] = await Promise.all([
-    requireManifest(join(distDir, BUILD_MANIFEST)),
-    requireManifest(join(distDir, REACT_LOADABLE_MANIFEST)),
-    hasServerComponents
-      ? requireManifest(join(distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json'))
-      : null,
-  ]);
+  const [
+    buildManifest,
+    reactLoadableManifest,
+    clientReferenceManifest,
+    serverActionsManifest,
+  ] =
+    await Promise.all([
+      loadManifest<BuildManifest>(join(distDir, BUILD_MANIFEST)),
+      loadManifest<ReactLoadableManifest>(join(distDir, REACT_LOADABLE_MANIFEST)),
+      hasServerComponents ?
+        loadManifest<ClientReferenceManifest>(
+          join(distDir, SERVER_DIRECTORY, CLIENT_REFERENCE_MANIFEST + '.json')
+        ) :
+        undefined,
+      hasServerComponents ?
+        loadManifest(
+          join(distDir, SERVER_DIRECTORY, SERVER_REFERENCE_MANIFEST + '.json')
+        )
+          .catch(() => null) :
+        null,
+    ]);
 
   const Component = interopDefault(ComponentMod);
   const Document = interopDefault(DocumentMod);
@@ -80,7 +98,14 @@ export async function loadComponents(
     getServerSideProps,
     getStaticProps,
     getStaticPaths,
-    serverComponentManifest,
+    clientReferenceManifest,
+    serverActionsManifest,
     isAppPath,
+    pathname,
   };
 }
+
+export const loadComponents = getTracer().wrap(
+  LoadComponentsSpan.loadComponents,
+  loadComponentsImpl
+);
