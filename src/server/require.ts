@@ -21,32 +21,31 @@ import { MissingStaticPage, PageNotFoundError } from 'next/dist/shared/lib/utils
 
 import { getFsSettings } from './fs';
 
-/**
- * Finds the path that corresponds to a page, based on the pages manifest and localizations.
- * (An adaptation for Compute@Edge of function in Next.js of the same name,
- * found at next/server/require.ts)
- */
-export function getPagePath(
+import LRUCache from 'lru-cache';
+
+const pagePathCache = new LRUCache<string, string | null>({
+  max: 1000,
+});
+
+export function getMaybePagePath(
   page: string,
   distDir: string,
-  serverless: boolean,
-  dev?: boolean,
   locales?: string[],
   appDirEnabled?: boolean
-): string {
-  if (serverless) {
-    throw new Error("serverless not supported for this platform!");
+) {
+  const cacheKey = `${page}:${locales}`;
+
+  if (pagePathCache.has(cacheKey)) {
+    return pagePathCache.get(cacheKey) as string | null;
   }
 
-  const serverBuildPath = join(
-    distDir,
-    SERVER_DIRECTORY
-  );
-  let rootPathsManifest: undefined | PagesManifest;
+  const serverBuildPath = join(distDir, SERVER_DIRECTORY);
+  let appPathsManifest: undefined | PagesManifest;
 
   if (appDirEnabled) {
-    rootPathsManifest = requireManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
+    appPathsManifest = requireManifest(join(serverBuildPath, APP_PATHS_MANIFEST));
   }
+
   const pagesManifest = requireManifest(join(
     serverBuildPath,
     PAGES_MANIFEST
@@ -75,8 +74,8 @@ export function getPagePath(
   }
   let pagePath: string | undefined;
 
-  if (rootPathsManifest) {
-    pagePath = checkManifest(rootPathsManifest);
+  if (appPathsManifest) {
+    pagePath = checkManifest(appPathsManifest);
   }
 
   if (!pagePath) {
@@ -84,9 +83,34 @@ export function getPagePath(
   }
 
   if (!pagePath) {
+    pagePathCache.set(cacheKey, null);
+    return null;
+  }
+
+  const path = join(serverBuildPath, pagePath);
+  pagePathCache.set(cacheKey, path);
+
+  return path;
+}
+
+/**
+ * Finds the path that corresponds to a page, based on the pages manifest and localizations.
+ * (An adaptation for Compute@Edge of function in Next.js of the same name,
+ * found at next/server/require.ts)
+ */
+export function getPagePath(
+  page: string,
+  distDir: string,
+  locales?: string[],
+  appDirEnabled?: boolean
+): string {
+  const pagePath = getMaybePagePath(page, distDir, locales, appDirEnabled);
+
+  if (!pagePath) {
     throw new PageNotFoundError(page);
   }
-  return join(serverBuildPath, pagePath);
+
+  return pagePath;
 }
 
 /**
@@ -97,17 +121,9 @@ export function getPagePath(
 export async function requirePage(
   page: string,
   distDir: string,
-  serverless: boolean,
   appDirEnabled?: boolean
 ): Promise<any> {
-  const pagePath = getPagePath(
-    page,
-    distDir,
-    serverless,
-    false,
-    undefined,
-    appDirEnabled
-  );
+  const pagePath = getPagePath(page, distDir, undefined, appDirEnabled);
   if (pagePath.endsWith('.html')) {
     try {
       return readAssetFileAsString(pagePath);
@@ -123,14 +139,8 @@ export async function requirePage(
  * (An adaptation for Compute@Edge of function in Next.js of the same name,
  * found at next/server/require.ts)
  */
-export function requireFontManifest(distDir: string, serverless: boolean) {
-  if (serverless) {
-    throw new Error("serverless not supported for this platform!");
-  }
-  const serverBuildPath = join(
-    distDir,
-    SERVER_DIRECTORY
-  );
+export function requireFontManifest(distDir: string) {
+  const serverBuildPath = join(distDir, SERVER_DIRECTORY);
   const fontManifest = requireManifest(join(serverBuildPath, FONT_MANIFEST));
   return fontManifest;
 }
