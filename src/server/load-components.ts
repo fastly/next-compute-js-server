@@ -27,13 +27,19 @@ import type { LoadComponentsReturnType } from 'next/dist/server/load-components'
  *  * serverless is not supported
  *  * use
  */
-export async function loadComponents(
-  distDir: string,
-  pathname: string,
-  serverless: boolean,
-  hasServerComponents: boolean,
+export async function loadComponents({
+  distDir,
+  pathname,
+  serverless,
+  hasServerComponents,
+  isAppPath,
+}: {
+  distDir: string
+  pathname: string
+  serverless: boolean
+  hasServerComponents: boolean
   isAppPath: boolean
-): Promise<LoadComponentsReturnType> {
+}): Promise<LoadComponentsReturnType> {
   if (serverless) {
     throw new Error("serverless not supported for this platform!");
   }
@@ -82,5 +88,6 @@ export async function loadComponents(
     getStaticPaths,
     serverComponentManifest,
     isAppPath,
+    pathname,
   };
 }
