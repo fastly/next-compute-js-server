@@ -16,6 +16,7 @@ import {
   PAGES_MANIFEST,
   PRERENDER_MANIFEST,
   SERVER_DIRECTORY,
+  FONT_LOADER_MANIFEST,
 } from 'next/constants';
 
 import { PrerenderManifest } from 'next/dist/build';
@@ -31,10 +32,15 @@ import BaseServer, {
   Options,
 } from 'next/dist/server/base-server';
 import { getClonableBody } from 'next/dist/server/body-streams';
-import { FontManifest} from 'next/dist/server/font-utils';
+import { FontManifest } from 'next/dist/server/font-utils';
 import { RenderOpts, renderToHTML } from 'next/dist/server/render';
 import { renderToHTMLOrFlight as appRenderToHTMLOrFlight } from 'next/dist/server/app-render';
-import { addRequestMeta, NextParsedUrlQuery, NextUrlWithParsedQuery } from 'next/dist/server/request-meta';
+import {
+  addRequestMeta,
+  getRequestMeta,
+  NextParsedUrlQuery,
+  NextUrlWithParsedQuery,
+} from 'next/dist/server/request-meta';
 import { DynamicRoutes, PageChecker, Route } from 'next/dist/server/router';
 import { PayloadOptions, sendRenderResult } from 'next/dist/server/send-payload';
 import { detectDomainLocale } from 'next/dist/shared/lib/i18n/detect-domain-locale';
@@ -48,6 +54,7 @@ import { removeTrailingSlash } from 'next/dist/shared/lib/router/utils/remove-tr
 import { Params} from 'next/dist/shared/lib/router/utils/route-matcher';
 import { PageNotFoundError } from 'next/dist/shared/lib/utils';
 import { NodeNextRequest, NodeNextResponse } from 'next/dist/server/base-http/node';
+import { isAPIRoute } from "next/dist/lib/is-api-route";
 
 import { toComputeResponse, toReqRes } from '@fastly/http-compute-js';
 
@@ -56,10 +63,11 @@ import {
   requireManifest,
   requireModule,
   requireFontManifest,
-  readAssetFileAsString,
+  readAssetFileAsString, getMaybePagePath,
 } from './require';
 import { loadComponents } from './load-components';
 import ComputeJsResponseCache from './response-cache/compute-js';
+import { findDir } from './find-pages-dir';
 
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { ParsedUrlQuery } from 'querystring';
@@ -84,13 +92,17 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   constructor(options: ComputeJsServerOptions) {
     super(options);
 
+    this.getHasAppDir(false);
+
     /**
      * This sets environment variable to be used at the time of SSR by head.tsx.
      * Using this from process.env allows targeting both serverless and SSR by calling
      * `process.env.__NEXT_OPTIMIZE_CSS`.
      */
     // if (this.renderOpts.optimizeFonts) {
-    //   process.env.__NEXT_OPTIMIZE_FONTS = JSON.stringify(true);
+    //   process.env.__NEXT_OPTIMIZE_FONTS = JSON.stringify(
+    //     this.renderOpts.optimizeFonts
+    //   );
     // }
     // if (this.renderOpts.optimizeCss) {
     //   process.env.__NEXT_OPTIMIZE_CSS = JSON.stringify(true);
@@ -104,28 +116,30 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     //
     //   // pre-warm _document and _app as these will be
     //   // needed for most requests
-    //   loadComponents(
-    //     this.distDir,
-    //     '/_document',
-    //     false,
-    //     false,
-    //     false,
-    //   ).catch(
+    //   loadComponents({
+    //     distDir: this.distDir,
+    //     pathname: '/_document',
+    //     hasServerComponents: false,
+    //     isAppPath: false,
+    //   }).catch(
     //     () => {
     //     }
     //   );
     //
     //   loadComponents(
-    //     this.distDir,
-    //     '/_app',
-    //     false,
-    //     false,
-    //     false,
+    //     distDir: this.distDir,
+    //     pathname: '/_app',
+    //     hasServerComponents: false,
+    //     isAppPath: false,
     //   ).catch(
     //     () => {
     //     }
     //   );
     // }
+
+    // // expose AsyncLocalStorage on global for react usage
+    // const { AsyncLocalStorage } = require('async_hooks')
+    // ;(global as any).AsyncLocalStorage = AsyncLocalStorage
 
     // Extend `renderOpts`.
     Object.assign(this.renderOpts, options.computeJsConfig.extendRenderOpts);
@@ -133,6 +147,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
 
   protected loadEnvConfig(): void {
     // NOTE: env config not loaded for Compute@Edge, here to fulfill abstract function
+  }
+
+  protected getIncrementalCache() {
+    return {} as any;
   }
 
   protected getResponseCache() {
@@ -151,24 +169,14 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getPagesManifest(): PagesManifest | undefined {
-    const pagesManifestFile = join(
-      this.distDir,
-      SERVER_DIRECTORY,
-      PAGES_MANIFEST,
-    );
-    return requireManifest(pagesManifestFile);
+    return requireManifest(join(this.serverDistDir, PAGES_MANIFEST));
   }
 
   protected getAppPathsManifest(): PagesManifest | undefined {
-    if (this.nextConfig.experimental.appDir) {
-      const appPathsManifestPath = join(
-        this.distDir,
-        SERVER_DIRECTORY,
-        APP_PATHS_MANIFEST,
-      );
+    if (this.hasAppDir) {
+      const appPathsManifestPath = join(this.serverDistDir, APP_PATHS_MANIFEST);
       return requireManifest(appPathsManifestPath);
     }
-    return undefined;
   }
 
   protected getFilesystemPaths(): Set<string> {
@@ -177,12 +185,12 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected async hasPage(pathname: string): Promise<boolean> {
-    let found = false;
-    try {
-      found = !!this.getPagePath(pathname, this.nextConfig.i18n?.locales);
-    } catch (_) {}
-
-    return found;
+    return !!getMaybePagePath(
+      pathname,
+      this.distDir,
+      this.nextConfig.i18n?.locales,
+      this.hasAppDir
+    );
   }
 
   protected getBuildId(): string {
@@ -201,6 +209,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
       },
       redirects: [],
     };
+  }
+
+  protected getHasAppDir(dev: boolean): boolean {
+    return Boolean(findDir(dev ? this.dir : this.serverDistDir, 'app'))
   }
 
   protected async sendRenderResult(
@@ -297,7 +309,10 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
             new NodeNextResponse(newRes)
           ),
         // internal config so is not typed
-        trustHostHeader: (this.nextConfig.experimental as any).trustHostHeader,
+        trustHostHeader: (this.nextConfig.experimental as Record<string, any>)
+          .trustHostHeader,
+        allowedRevalidateHeaderKeys:
+          this.nextConfig.experimental.allowedRevalidateHeaderKeys,
       },
       this.minimalMode,
       this.renderOpts.dev,
@@ -370,20 +385,16 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     // https://github.com/vercel/next.js/blob/df7cbd904c3bd85f399d1ce90680c0ecf92d2752/packages/next/server/render.tsx#L947-L952
     renderOpts.serverComponentManifest = this.serverComponentManifest
     renderOpts.serverCSSManifest = this.serverCSSManifest
+    renderOpts.fontLoaderManifest = this.fontLoaderManifest;
 
-    if (
-      this.nextConfig.experimental.appDir &&
-      (renderOpts.isAppPath || query.__flight__)
-    ) {
-      const isPagesDir = !renderOpts.isAppPath
+    if (this.hasAppDir && renderOpts.isAppPath) {
       return appRenderToHTMLOrFlight(
         req.originalRequest,
         res.originalResponse,
         pathname,
         query,
-        renderOpts,
-        isPagesDir
-      )
+        renderOpts
+      );
     }
 
     return renderToHTML(
@@ -396,14 +407,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getPagePath(pathname: string, locales?: string[]): string {
-    return getPagePath(
-      pathname,
-      this.distDir,
-      false,
-      this.renderOpts.dev,
-      locales,
-      this.nextConfig.experimental.appDir
-    );
+    return getPagePath(pathname, this.distDir, locales, this.hasAppDir);
   }
 
   protected async findPageComponents({
@@ -417,39 +421,36 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     params: Params | null
     isAppPath: boolean
   }): Promise<FindComponentsResult | null> {
-    let paths = [
+    const paths: string[] = [pathname];
+    if (query.amp) {
       // try serving a static AMP version first
-      query.amp ?
-        (isAppPath ?
-          normalizeAppPath(pathname) :
-          normalizePagePath(pathname)
-        ) + '.amp' : null,
-      pathname,
-    ].filter(Boolean);
+      paths.unshift(
+        (isAppPath ? normalizeAppPath(pathname) : normalizePagePath(pathname)) +
+          '.amp'
+      );
+    }
 
     if (query.__nextLocale) {
-      paths = [
+      paths.unshift(
         ...paths.map(
           (path) => `/${query.__nextLocale}${path === '/' ? '' : path}`
-        ),
-        ...paths,
-      ];
+        ));
+
     }
 
     for (const pagePath of paths) {
       try {
-        const components = await loadComponents(
-          this.distDir,
-          pagePath!,
-          false,
-          !!this.renderOpts.serverComponents,
+        const components = await loadComponents({
+          distDir: this.distDir,
+          pathname: pagePath,
+          hasServerComponents: !!this.renderOpts.serverComponents,
           isAppPath,
-        );
+        });
 
         if (
           query.__nextLocale &&
           typeof components.Component === 'string' &&
-          !pagePath?.startsWith(`/${query.__nextLocale}`)
+          !pagePath.startsWith(`/${query.__nextLocale}`)
         ) {
           // if loading a static HTML file the locale is required
           // to be present since all HTML files are output under their locale
@@ -465,7 +466,6 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
                 __nextDataReq: query.__nextDataReq,
                 __nextLocale: query.__nextLocale,
                 __nextDefaultLocale: query.__nextDefaultLocale,
-                __flight__: query.__flight__,
               } as NextParsedUrlQuery)
               : query),
             // For appDir params is excluded.
@@ -485,23 +485,28 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected getFontManifest(): FontManifest {
-    return requireFontManifest(this.distDir, false);
+    return requireFontManifest(this.distDir);
   }
 
   protected getServerComponentManifest() {
     // TODO: If we want to support Server Components
-    if (!this.nextConfig.experimental.serverComponents) return undefined;
+    if (!this.hasAppDir) return undefined;
     return requireManifest(join(this.distDir, SERVER_DIRECTORY, FLIGHT_MANIFEST + '.json'));
   }
 
   protected getServerCSSManifest() {
     // TODO: If we want to support Server Components
-    if (!this.nextConfig.experimental.serverComponents) return undefined;
+    if (!this.hasAppDir) return undefined;
     return requireManifest(join(
       this.distDir,
       SERVER_DIRECTORY,
       FLIGHT_SERVER_CSS_MANIFEST + '.json'
     ));
+  }
+
+  protected getFontLoaderManifest() {
+    if (!this.nextConfig.experimental.fontLoaders) return undefined
+    return requireManifest(join(this.distDir, 'server', `${FONT_LOADER_MANIFEST}.json`))
   }
 
   protected override async getFallback(page: string) {
@@ -534,10 +539,18 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         name: '_next/data catchall',
         check: true,
         fn: async (req, res, params, _parsedUrl) => {
+          const isNextDataNormalizing = getRequestMeta(
+            req,
+            '_nextDataNormalizing'
+          );
+
           // Make sure to 404 for /_next/data/ itself and
           // we also want to 404 if the buildId isn't correct
           if (!params.path || params.path[0] !== this.buildId) {
-            await this.render404(req, res, _parsedUrl)
+            if (isNextDataNormalizing) {
+              return { finished: false };
+            }
+            await this.render404(req, res, _parsedUrl);
             return {
               finished: true,
             };
@@ -651,7 +664,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
         }
         const bubbleNoFallback = !!query._nextBubbleNoFallback;
 
-        if (pathname === '/api' || pathname.startsWith('/api/')) {
+        if (isAPIRoute(pathname)) {
           delete query._nextBubbleNoFallback;
 
           // NOTE (Fastly): Unlike the WebServer implementation from
@@ -724,7 +737,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     if (!pageFound && this.dynamicRoutes) {
       for (const dynamicRoute of this.dynamicRoutes) {
         params = dynamicRoute.match(pathname) || undefined;
-        if (dynamicRoute.page.startsWith('/api') && params) {
+        if (isAPIRoute(dynamicRoute.page) && params) {
           page = dynamicRoute.page;
           pageFound = true;
           break;
@@ -778,5 +791,9 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
     addRequestMeta(req, '__NEXT_INIT_QUERY', {...parsedUrl.query});
     addRequestMeta(req, '_protocol', protocol);
     addRequestMeta(req, '__NEXT_CLONABLE_BODY', getClonableBody(req.body));
+  }
+
+  protected get serverDistDir() {
+    return join(this.distDir, SERVER_DIRECTORY)
   }
 }
