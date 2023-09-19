@@ -3,6 +3,8 @@
  * Licensed under the MIT license. See LICENSE file for details.
  */
 
+import path from 'path';
+
 import type { ContentAssets, ModuleAssets } from '@fastly/compute-js-static-publish';
 
 let _fsAssets: {
@@ -43,4 +45,15 @@ export function getFsSettings() {
     ..._fsSettings,
     ..._fsAssets,
   };
+}
+
+export function existsSync(dir: string) {
+  const settings = getFsSettings();
+  const fullPath = path.join(settings.dir, dir);
+  return settings.contentAssets.getAsset(fullPath) != null;
+}
+
+export function resolve(...paths: string[]) {
+  const settings = getFsSettings();
+  return path.resolve(settings.dir, ...paths);
 }
