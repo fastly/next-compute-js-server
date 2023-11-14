@@ -1,9 +1,9 @@
-# Next.js on Compute@Edge Runtime Server
+# Next.js Runtime Server on Fastly Compute
 
 This is an implementation of Next.js's BaseServer for
-Compute@Edge and the behavior is modeled highly off of NextNodeServer.
+Fastly Compute, and the behavior is modeled highly off of NextNodeServer.
 It enables running pages and API routes that target the `nodejs` runtime
-on Compute@Edge.
+on Compute.
 
 NextWebServer (the Edge Runtime version) should be possible to run without
 this port.
