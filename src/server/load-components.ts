@@ -20,7 +20,7 @@ import type { LoadComponentsReturnType } from 'next/dist/server/load-components'
 
 /**
  * Loads React component associated with a given pathname.
- * (An adaptation for Compute@Edge of function in Next.js of the same name,
+ * (An adaptation for Compute of function in Next.js of the same name,
  * found at next/server/load-components.ts)
  *
  * Differences:
