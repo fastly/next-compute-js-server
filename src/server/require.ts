@@ -98,7 +98,7 @@ export function getMaybePagePath(
 
 /**
  * Finds the path that corresponds to a page, based on the pages manifest and localizations.
- * (An adaptation for Compute@Edge of function in Next.js of the same name,
+ * (An adaptation for Compute of function in Next.js of the same name,
  * found at next/server/require.ts)
  */
 export function getPagePath(
@@ -118,7 +118,7 @@ export function getPagePath(
 
 /**
  * Loads the string or module that corresponds to a page.
- * (An adaptation for Compute@Edge of function in Next.js of the same name,
+ * (An adaptation for Compute of function in Next.js of the same name,
  * found at next/server/require.ts)
  */
 export async function requirePage(
@@ -139,7 +139,7 @@ export async function requirePage(
 
 /**
  * Load the font manifest.
- * (An adaptation for Compute@Edge of function in Next.js of the same name,
+ * (An adaptation for Compute of function in Next.js of the same name,
  * found at next/server/require.ts)
  */
 export function requireFontManifest(distDir: string) {
