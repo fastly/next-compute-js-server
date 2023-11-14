@@ -81,8 +81,8 @@ export interface ComputeJsServerOptions extends Options {
 export type ComputeJsRequestHandler = (request: Request) => Promise<Response>;
 
 /**
- * An implementation of a Next.js server that has been adapted to run in Compute@Edge.
- * (An adaptation for Compute@Edge of NextNodeServer in Next.js,
+ * An implementation of a Next.js server that has been adapted to run in Compute.
+ * (An adaptation for Compute of NextNodeServer in Next.js,
  * found at next/server/next-server.ts)
  */
 export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptions> {
@@ -139,7 +139,7 @@ export default class NextComputeJsServer extends BaseServer<ComputeJsServerOptio
   }
 
   protected loadEnvConfig(): void {
-    // NOTE: env config not loaded for Compute@Edge, here to fulfill abstract function
+    // NOTE: env config not loaded for Compute, here to fulfill abstract function
   }
 
   protected getResponseCache() {
